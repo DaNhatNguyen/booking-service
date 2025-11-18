@@ -1,0 +1,22 @@
+package com.example.booking_service.repository;
+
+import com.example.booking_service.entity.Booking;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Repository
+public interface BookingRepository extends JpaRepository<Booking, Long> {
+    @Query("SELECT b FROM Booking b WHERE b.courtId = :courtId AND b.bookingDate = :date AND b.status != 'CANCELLED'")
+    List<Booking> findActiveBookingsByCourtAndDate(@Param("courtId") Long courtId,
+                                                   @Param("date") LocalDate date);
+
+    @Query("SELECT b FROM Booking b WHERE b.courtId = :courtId")
+    List<Booking> findActiveBookingsByCourtId(@Param("courtId") Long courtId);
+
+    List<Booking> findByUserId(Long userId);
+}
