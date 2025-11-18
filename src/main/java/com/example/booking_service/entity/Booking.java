@@ -6,6 +6,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 @Entity
 @Table(name = "bookings")
@@ -31,9 +32,17 @@ public class Booking {
     @Column(name = "booking_date")
     LocalDate bookingDate;
 
+    @Column(name = "start_time")
+    LocalTime startTime;
+
+    @Column(name = "end_time")
+    LocalTime endTime;
+
     String status;
 
     Double price;
+
+    String address;
 
     @Column(name = "created_at")
     LocalDateTime createdAt;

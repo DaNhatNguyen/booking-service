@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -75,82 +77,6 @@ public class CourtGroupService {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
-    }
-
-    public CourtGroupDataResponse getCourtGroupData(Long courtGroupId) {
-        CourtGroup courtGroup = courtGroupRepository.findById(courtGroupId)
-                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
-
-        // Get all courts for this court group
-        List<Court> courts = courtRepository.findByCourtGroupId(courtGroupId);
-
-        // Get all time slots for mapping
-        Map<Long, TimeSlot> timeSlotMap = timeSlotRepository.findAll()
-                .stream()
-                .collect(Collectors.toMap(TimeSlot::getId, ts -> ts));
-
-        // Build booking courts data
-        List<CourtBookingData> bookingCourts = courts.stream()
-                .map(court -> buildCourtBookingData(court, timeSlotMap))
-                .toList();
-
-        return CourtGroupDataResponse.builder()
-                .id(courtGroup.getId())
-                .name(courtGroup.getName())
-                .bookingCourts(bookingCourts)
-                .build();
-    }
-
-    private CourtBookingData buildCourtBookingData(Court court, Map<Long, TimeSlot> timeSlotMap) {
-        // Get bookings for this court
-        List<Booking> bookings = bookingRepository.findActiveBookingsByCourtId(court.getId());
-
-        // Get prices for this court
-        List<CourtPrice> courtPrices = courtPriceRepository.findByCourtId(court.getId());
-
-        // Build bookings data
-        List<BookingData> bookingDataList = bookings.stream()
-                .map(booking -> {
-                    TimeSlot timeSlot = timeSlotMap.get(booking.getTimeSlotId());
-                    return BookingData.builder()
-                            .id(booking.getId())
-                            .bookingDate(booking.getBookingDate() != null 
-                                    ? booking.getBookingDate().format(DATE_FORMATTER) 
-                                    : null)
-                            .startTime(timeSlot != null && timeSlot.getStartTime() != null
-                                    ? timeSlot.getStartTime().format(TIME_FORMATTER)
-                                    : null)
-                            .endTime(timeSlot != null && timeSlot.getEndTime() != null
-                                    ? timeSlot.getEndTime().format(TIME_FORMATTER)
-                                    : null)
-                            .totalPrice(booking.getPrice())
-                            .build();
-                })
-                .toList();
-
-        // Build prices data
-        List<PriceData> priceDataList = courtPrices.stream()
-                .map(courtPrice -> {
-                    TimeSlot timeSlot = timeSlotMap.get(courtPrice.getTimeSlotId());
-                    return PriceData.builder()
-                            .timeSlotId(courtPrice.getTimeSlotId())
-                            .startTime(timeSlot != null && timeSlot.getStartTime() != null
-                                    ? timeSlot.getStartTime().format(TIME_FORMATTER)
-                                    : null)
-                            .endTime(timeSlot != null && timeSlot.getEndTime() != null
-                                    ? timeSlot.getEndTime().format(TIME_FORMATTER)
-                                    : null)
-                            .price(courtPrice.getPrice())
-                            .build();
-                })
-                .toList();
-
-        return CourtBookingData.builder()
-                .id(court.getId())
-                .name(court.getName())
-                .bookings(bookingDataList)
-                .prices(priceDataList)
-                .build();
     }
 }
 

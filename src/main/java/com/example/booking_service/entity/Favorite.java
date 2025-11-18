@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@IdClass(FavoriteId.class)
 public class Favorite {
     @Id
     @Column(name = "user_id")
@@ -25,9 +24,4 @@ public class Favorite {
 
     @Column(name = "created_at")
     LocalDateTime createdAt;
-}
-
-class FavoriteId implements java.io.Serializable {
-    Long userId;
-    Long courtGroupId;
 }

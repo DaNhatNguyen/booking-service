@@ -5,19 +5,13 @@ import lombok.Builder;
 import lombok.Value;
 import lombok.extern.jackson.Jacksonized;
 
-import java.util.List;
-
 @Value
 @Builder
 @Jacksonized
-public class CourtGroupDataResponse {
-    Long id;
-    String name;
+public class TimeSlotResponse {
+    @JsonProperty("start_time")
+    String startTime;
 
-    @JsonProperty("booking_courts")
-    List<CourtBookingData> bookingCourts;
+    @JsonProperty("end_time")
+    String endTime;
 }
-
-
-
-

@@ -17,4 +17,16 @@ public interface CourtPriceRepository extends JpaRepository<CourtPrice, Long> {
             "(cp.effectiveDate IS NULL OR cp.effectiveDate <= :date)")
     List<CourtPrice> findActivePricesByCourtId(@Param("courtId") Long courtId,
                                                @Param("date") LocalDate date);
+
+    @Query("SELECT cp FROM CourtPrice cp WHERE cp.courtGroupId = :courtGroupId AND " +
+            "cp.dayType = :dayType AND (cp.effectiveDate IS NULL OR cp.effectiveDate <= :date) " +
+            "ORDER BY cp.effectiveDate DESC")
+    List<CourtPrice> findActivePricesByCourtGroupAndDayType(@Param("courtGroupId") Long courtGroupId,
+                                                            @Param("dayType") String dayType,
+                                                            @Param("date") LocalDate date);
+
+    @Query("SELECT cp FROM CourtPrice cp WHERE cp.courtGroupId = :courtGroupId AND " +
+            "cp.dayType = :dayType ORDER BY cp.effectiveDate DESC")
+    List<CourtPrice> findLatestPricesByCourtGroupAndDayType(@Param("courtGroupId") Long courtGroupId,
+                                                            @Param("dayType") String dayType);
 }

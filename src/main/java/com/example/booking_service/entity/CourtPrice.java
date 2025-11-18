@@ -18,6 +18,9 @@ public class CourtPrice {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long id;
 
+    @Column(name = "court_group_id")
+    Long courtGroupId;
+
     @Column(name = "court_id")
     Long courtId;
 

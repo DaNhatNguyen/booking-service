@@ -1,5 +1,6 @@
 package com.example.booking_service.service;
 
+import com.example.booking_service.dto.request.CreateBookingRequest;
 import com.example.booking_service.dto.response.*;
 import com.example.booking_service.entity.*;
 import com.example.booking_service.repository.*;
@@ -9,6 +10,7 @@ import lombok.experimental.FieldDefaults;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -27,167 +29,145 @@ public class BookingService {
     CourtPriceRepository courtPriceRepository;
     BookingRepository bookingRepository;
 
-    public BookingDataResponse getBookingData(Long courtGroupId, LocalDate date) {
-        CourtGroup courtGroup = courtGroupRepository.findById(courtGroupId)
-                .orElseThrow(() -> new RuntimeException("Court group not found"));
-
-        List<Court> courts = courtRepository.findByCourtGroupId(courtGroupId);
-
-        List<BookingCourtResponse> bookingCourts = courts.stream()
-                .map(court -> buildBookingCourt(court, date))
-                .collect(Collectors.toList());
-
-        return BookingDataResponse.builder()
-                .id(courtGroup.getId())
-                .name(courtGroup.getName())
-                .defaultPrice(250000.0)
-                .bookingCourts(bookingCourts)
-                .build();
+    private String formatTime(LocalTime time) {
+        if (time == null) return null;
+        return time.format(TIME_FORMATTER);
     }
 
-    private BookingCourtResponse buildBookingCourt(Court court, LocalDate date) {
-        // Get bookings for this court on this date
-        List<Booking> activeBookings = bookingRepository.findActiveBookingsByCourtAndDate(court.getId(), date);
+    public BookingByDateResponse getBookingDataByDate(Long courtGroupId, LocalDate date) {
+        // Get all courts in the court group
+        List<Court> courts = courtRepository.findByCourtGroupId(courtGroupId);
+        
+        if (courts.isEmpty()) {
+            return BookingByDateResponse.builder()
+                    .bookingCourts(Collections.emptyList())
+                    .build();
+        }
 
-        List<BookingSlotResponse> bookingSlots = activeBookings.stream()
-                .map(booking -> {
-                    TimeSlot timeSlot = timeSlotRepository.findById(booking.getTimeSlotId())
-                            .orElse(null);
-                    if (timeSlot == null) return null;
-
-                    return BookingSlotResponse.builder()
-                            .id(booking.getId())
-                            .startTime(formatTime(timeSlot.getStartTime()))
-                            .endTime(formatTime(timeSlot.getEndTime()))
-                            .totalPrice(booking.getPrice())
-                            .build();
-                })
-                .filter(Objects::nonNull)
+        // Extract court IDs
+        List<Long> courtIds = courts.stream()
+                .map(Court::getId)
                 .collect(Collectors.toList());
 
-        // Get prices for this court
-        List<CourtPrice> courtPrices = courtPriceRepository.findActivePricesByCourtId(court.getId(), date);
+        // Get all bookings for these courts on the specified date
+        List<Booking> bookings = bookingRepository.findActiveBookingsByCourtIdsAndDate(courtIds, date);
 
-        List<PricingSlotResponse> prices = courtPrices.stream()
+        // Determine day type (WEEKDAY or WEEKEND)
+        String dayType = isWeekend(date) ? "WEEKEND" : "WEEKDAY";
+
+        // Get prices for the court group and day type
+        // First try to get prices with effective_date <= date
+        List<CourtPrice> courtPrices = courtPriceRepository.findActivePricesByCourtGroupAndDayType(
+                courtGroupId, dayType, date);
+        
+        // If no prices found, get the latest prices regardless of effective_date
+        if (courtPrices.isEmpty()) {
+            courtPrices = courtPriceRepository.findLatestPricesByCourtGroupAndDayType(
+                    courtGroupId, dayType);
+        }
+
+        // Get all time slots
+        List<TimeSlot> timeSlots = timeSlotRepository.findAll();
+        Map<Long, TimeSlot> timeSlotMap = timeSlots.stream()
+                .collect(Collectors.toMap(TimeSlot::getId, ts -> ts));
+
+        // Build price info list
+        List<BookingByDateResponse.PriceInfo> priceInfoList = courtPrices.stream()
                 .map(cp -> {
-                    TimeSlot timeSlot = timeSlotRepository.findById(cp.getTimeSlotId())
-                            .orElse(null);
-                    if (timeSlot == null) return null;
-
-                    return PricingSlotResponse.builder()
-                            .timeSlotId(cp.getTimeSlotId())
-                            .startTime(formatTime(timeSlot.getStartTime()))
-                            .endTime(formatTime(timeSlot.getEndTime()))
+                    TimeSlot ts = timeSlotMap.get(cp.getTimeSlotId());
+                    if (ts == null) return null;
+                    return BookingByDateResponse.PriceInfo.builder()
+                            .timeSlotId(ts.getId())
+                            .startTime(formatTime(ts.getStartTime()))
+                            .endTime(formatTime(ts.getEndTime()))
                             .price(cp.getPrice())
                             .build();
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
-        return BookingCourtResponse.builder()
-                .id(court.getId())
-                .name(court.getName())
-                .bookings(bookingSlots)
-                .prices(prices)
+        // Group bookings by court ID
+        Map<Long, List<Booking>> bookingsByCourtId = bookings.stream()
+                .collect(Collectors.groupingBy(Booking::getCourtId));
+
+        // Build court data list
+        List<BookingByDateResponse.BookingCourtData> courtDataList = courts.stream()
+                .map(court -> {
+                    List<Booking> courtBookings = bookingsByCourtId.getOrDefault(court.getId(), Collections.emptyList());
+                    
+                    List<BookingByDateResponse.BookingInfo> bookingInfoList = courtBookings.stream()
+                            .map(booking -> BookingByDateResponse.BookingInfo.builder()
+                                    .id(booking.getId())
+                                    .bookingDate(booking.getBookingDate().toString())
+                                    .startTime(formatTime(booking.getStartTime()))
+                                    .endTime(formatTime(booking.getEndTime()))
+                                    .totalPrice(booking.getPrice())
+                                    .build())
+                            .collect(Collectors.toList());
+
+                    return BookingByDateResponse.BookingCourtData.builder()
+                            .id(court.getId())
+                            .name(court.getName())
+                            .bookings(bookingInfoList)
+                            .prices(priceInfoList)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        return BookingByDateResponse.builder()
+                .bookingCourts(courtDataList)
                 .build();
     }
 
-    public BookingConfirmationResponse getBookingConfirmation(Long courtGroupId, Long courtId,
-                                                              LocalDate date,
-                                                              List<TimeSlotSelection> selectedSlots) {
-        CourtGroup courtGroup = courtGroupRepository.findById(courtGroupId)
-                .orElseThrow(() -> new RuntimeException("Court group not found"));
-
-        Court court = courtRepository.findById(courtId)
-                .orElseThrow(() -> new RuntimeException("Court not found"));
-
-        String fullAddress = String.format("%s, %s, %s",
-                courtGroup.getAddress(),
-                courtGroup.getDistrict(),
-                courtGroup.getProvince());
-
-        // Merge consecutive time slots
-        List<TimeSlotInfo> mergedSlots = mergeTimeSlots(selectedSlots);
-
-        // Calculate total price
-        double totalPrice = calculateTotalPrice(courtId, selectedSlots, date);
-
-        return BookingConfirmationResponse.builder()
-                .courtGroupId(courtGroup.getId())
-                .courtGroupName(courtGroup.getName())
-                .fullAddress(fullAddress)
-                .bookingDate(date.toString())
-                .courtName(court.getName())
-                .timeSlots(mergedSlots)
-                .totalPrice(totalPrice)
+    public CreateBookingResponse createBooking(CreateBookingRequest request) {
+        // Parse date and times
+        LocalDate bookingDate = LocalDate.parse(request.getBookingDate());
+        
+        // Get earliest start time and latest end time from time slots
+        LocalTime startTime = request.getTimeSlots().stream()
+                .map(ts -> LocalTime.parse(ts.getStartTime(), TIME_FORMATTER))
+                .min(LocalTime::compareTo)
+                .orElseThrow(() -> new RuntimeException("No time slots provided"));
+        
+        LocalTime endTime = request.getTimeSlots().stream()
+                .map(ts -> LocalTime.parse(ts.getEndTime(), TIME_FORMATTER))
+                .max(LocalTime::compareTo)
+                .orElseThrow(() -> new RuntimeException("No time slots provided"));
+        
+        // Create booking entity
+        Booking booking = Booking.builder()
+                .userId(request.getUserId())
+                .courtId(request.getCourtId())
+                .bookingDate(bookingDate)
+                .startTime(startTime)
+                .endTime(endTime)
+                .status(request.getStatus() != null ? request.getStatus() : "PENDING")
+                .price(request.getTotalPrice())
+                .address(request.getFullAddress())
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        // Save booking
+        Booking savedBooking = bookingRepository.save(booking);
+        
+        // Build response
+        return CreateBookingResponse.builder()
+                .bookingId(savedBooking.getId())
+                .userId(savedBooking.getUserId())
+                .courtId(savedBooking.getCourtId())
+                .bookingDate(savedBooking.getBookingDate().toString())
+                .startTime(formatTime(savedBooking.getStartTime()))
+                .endTime(formatTime(savedBooking.getEndTime()))
+                .status(savedBooking.getStatus())
+                .totalPrice(savedBooking.getPrice())
+                .address(savedBooking.getAddress())
+                .message("Booking created successfully. Please proceed to payment.")
                 .build();
     }
 
-    private List<TimeSlotInfo> mergeTimeSlots(List<TimeSlotSelection> slots) {
-        if (slots.isEmpty()) return Collections.emptyList();
-
-        // Sort by start time
-        List<TimeSlotSelection> sorted = new ArrayList<>(slots);
-        sorted.sort(Comparator.comparing(TimeSlotSelection::getStartTime));
-
-        List<TimeSlotInfo> merged = new ArrayList<>();
-        TimeSlotSelection current = sorted.get(0);
-
-        for (int i = 1; i < sorted.size(); i++) {
-            TimeSlotSelection next = sorted.get(i);
-            if (current.getEndTime().equals(next.getStartTime())) {
-                // Consecutive, merge
-                current = new TimeSlotSelection(current.getStartTime(), next.getEndTime());
-            } else {
-                // Not consecutive, add current and start new
-                merged.add(TimeSlotInfo.builder()
-                        .startTime(current.getStartTime())
-                        .endTime(current.getEndTime())
-                        .build());
-                current = next;
-            }
-        }
-
-        // Add the last one
-        merged.add(TimeSlotInfo.builder()
-                .startTime(current.getStartTime())
-                .endTime(current.getEndTime())
-                .build());
-
-        return merged;
-    }
-
-    private double calculateTotalPrice(Long courtId, List<TimeSlotSelection> slots, LocalDate date) {
-        List<CourtPrice> prices = courtPriceRepository.findActivePricesByCourtId(courtId, date);
-
-        double total = 0.0;
-        for (TimeSlotSelection slot : slots) {
-            LocalTime start = LocalTime.parse(slot.getStartTime(), TIME_FORMATTER);
-            LocalTime end = LocalTime.parse(slot.getEndTime(), TIME_FORMATTER);
-
-            for (CourtPrice cp : prices) {
-                TimeSlot ts = timeSlotRepository.findById(cp.getTimeSlotId()).orElse(null);
-                if (ts == null) continue;
-
-                LocalTime priceStart = ts.getStartTime();
-                LocalTime priceEnd = ts.getEndTime();
-
-                // Check if slot overlaps with price range
-                if (!start.isBefore(priceStart) && start.isBefore(priceEnd) ||
-                        !end.isAfter(priceStart) && end.isBefore(priceEnd) ||
-                        start.isBefore(priceStart) && end.isAfter(priceEnd)) {
-                    total += cp.getPrice();
-                    break;
-                }
-            }
-        }
-
-        return total;
-    }
-
-    private String formatTime(LocalTime time) {
-        if (time == null) return null;
-        return time.format(TIME_FORMATTER);
+    private boolean isWeekend(LocalDate date) {
+        java.time.DayOfWeek dayOfWeek = date.getDayOfWeek();
+        return dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;
     }
 
     // Inner class for time slot selection
