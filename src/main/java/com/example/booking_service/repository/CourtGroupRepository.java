@@ -10,6 +10,8 @@ import java.util.List;
 public interface CourtGroupRepository extends JpaRepository<CourtGroup, Long> {
 
     List<CourtGroup> findByProvinceAndDistrict(String province, String district);
+    
+    List<CourtGroup> findByTypeAndProvinceAndDistrict(String type, String province, String district);
 }
 
 

@@ -45,6 +45,13 @@ public class CourtGroupService {
         return toResponse(courtGroup);
     }
 
+    public List<CourtGroupResponse> searchCourtGroups(String type, String city, String district) {
+        return courtGroupRepository.findByTypeAndProvinceAndDistrict(type, city, district)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     private CourtGroupResponse toResponse(CourtGroup entity) {
         return CourtGroupResponse.builder()
                 .id(entity.getId() != null ? entity.getId().toString() : null)
