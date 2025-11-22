@@ -31,6 +31,8 @@ public class CourtGroupResponse {
     Double rating;
 
     String description;
+
+    String status;
 }
 
 

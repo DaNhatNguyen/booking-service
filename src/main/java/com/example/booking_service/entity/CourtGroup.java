@@ -46,8 +46,12 @@ public class CourtGroup {
     @Column(name = "close_time")
     LocalTime closeTime;
 
+    @Column(name = "status")
+    String status;
+
     @Column(name = "created_at")
     LocalDateTime createdAt;
+
 }
 
 

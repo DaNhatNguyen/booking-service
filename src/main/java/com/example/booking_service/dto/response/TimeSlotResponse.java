@@ -9,6 +9,8 @@ import lombok.extern.jackson.Jacksonized;
 @Builder
 @Jacksonized
 public class TimeSlotResponse {
+    Long id;
+    
     @JsonProperty("start_time")
     String startTime;
 

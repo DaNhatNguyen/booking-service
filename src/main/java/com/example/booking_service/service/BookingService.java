@@ -7,7 +7,12 @@ import com.example.booking_service.repository.*;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -19,19 +24,182 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+@Slf4j
 public class BookingService {
 
     static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     CourtRepository courtRepository;
     CourtGroupRepository courtGroupRepository;
     TimeSlotRepository timeSlotRepository;
     CourtPriceRepository courtPriceRepository;
     BookingRepository bookingRepository;
+    UserRepository userRepository;
 
     private String formatTime(LocalTime time) {
         if (time == null) return null;
         return time.format(TIME_FORMATTER);
+    }
+
+    public BookingListResponse getBookings(
+            Integer page,
+            Integer limit,
+            String status,
+            LocalDate bookingDate,
+            String search,
+            Long ownerId) {
+        
+        try {
+            // Set defaults
+            int pageNumber = (page != null && page > 0) ? page - 1 : 0; // Convert to 0-based index
+            int pageSize = (limit != null && limit > 0) ? limit : 10;
+            
+            log.info("Fetching bookings: page={}, limit={}, status={}, bookingDate={}, search={}, ownerId={}", 
+                    page, limit, status, bookingDate, search, ownerId);
+            
+            Pageable pageable = PageRequest.of(pageNumber, pageSize);
+            
+            Page<Booking> bookingPage = bookingRepository.findBookingsWithFilters(
+                    status,
+                    bookingDate,
+                    search,
+                    ownerId,
+                    pageable
+            );
+            
+            // Map to response
+            List<BookingDetailResponse> bookingDetails = bookingPage.getContent().stream()
+                    .map(this::toBookingDetailResponse)
+                    .collect(Collectors.toList());
+            
+            // Create pagination response
+            PaginationResponse pagination = PaginationResponse.builder()
+                    .total(bookingPage.getTotalElements())
+                    .page(page != null ? page : 1)
+                    .limit(pageSize)
+                    .totalPages(bookingPage.getTotalPages())
+                    .build();
+            
+            return BookingListResponse.builder()
+                    .bookings(bookingDetails)
+                    .pagination(pagination)
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("Error fetching bookings", e);
+            throw e;
+        }
+    }
+
+    public BookingDetailResponse getBookingById(Long bookingId) {
+        try {
+            log.info("Fetching booking by ID: {}", bookingId);
+            
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            return toBookingDetailResponse(booking);
+            
+        } catch (Exception e) {
+            log.error("Error fetching booking by ID: {}", bookingId, e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public UpdateBookingStatusResponse updateBookingStatus(Long bookingId, String status) {
+        try {
+            log.info("Updating booking status: bookingId={}, newStatus={}", bookingId, status);
+            
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            // Update status
+            booking.setStatus(status);
+            
+            // Update timestamp
+            LocalDateTime now = LocalDateTime.now();
+            
+            Booking updatedBooking = bookingRepository.save(booking);
+            
+            log.info("Booking status updated successfully: bookingId={}, status={}", bookingId, status);
+            
+            return UpdateBookingStatusResponse.builder()
+                    .id(updatedBooking.getId())
+                    .status(updatedBooking.getStatus())
+                    .updatedAt(now.format(DATETIME_FORMATTER))
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("Error updating booking status: bookingId={}", bookingId, e);
+            throw e;
+        }
+    }
+
+    @Transactional
+    public void deleteBooking(Long bookingId) {
+        try {
+            log.info("Deleting/Cancelling booking: bookingId={}", bookingId);
+            
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            // Soft delete: Set status to CANCELLED instead of hard delete
+            // This preserves booking history
+            booking.setStatus("CANCELLED");
+            bookingRepository.save(booking);
+            
+            // Alternative: Hard delete (uncomment if needed)
+            // bookingRepository.delete(booking);
+            
+            log.info("Booking deleted/cancelled successfully: bookingId={}", bookingId);
+            
+        } catch (Exception e) {
+            log.error("Error deleting booking: bookingId={}", bookingId, e);
+            throw e;
+        }
+    }
+
+    private BookingDetailResponse toBookingDetailResponse(Booking booking) {
+        // Fetch related entities
+        User user = userRepository.findById(booking.getUserId().toString()).orElse(null);
+        Court court = courtRepository.findById(booking.getCourtId()).orElse(null);
+        CourtGroup courtGroup = null;
+        
+        if (court != null) {
+            courtGroup = courtGroupRepository.findById(court.getCourtGroupId()).orElse(null);
+        }
+        
+        String courtGroupAddress = "";
+        if (courtGroup != null) {
+            courtGroupAddress = String.format("%s, %s, %s", 
+                    courtGroup.getAddress(),
+                    courtGroup.getDistrict(),
+                    courtGroup.getProvince());
+        }
+        
+        return BookingDetailResponse.builder()
+                .id(booking.getId())
+                .userId(booking.getUserId())
+                .userName(user != null ? user.getFullName() : null)
+                .userEmail(user != null ? user.getEmail() : null)
+                .userPhone(user != null ? user.getPhone() : null)
+                .courtId(booking.getCourtId())
+                .courtName(court != null ? court.getName() : null)
+                .courtGroupId(courtGroup != null ? courtGroup.getId() : null)
+                .courtGroupName(courtGroup != null ? courtGroup.getName() : null)
+                .courtGroupType(courtGroup != null ? courtGroup.getType() : null)
+                .courtGroupAddress(courtGroupAddress)
+                .bookingDate(booking.getBookingDate() != null ? booking.getBookingDate().format(DATE_FORMATTER) : null)
+                .startTime(booking.getStartTime() != null ? booking.getStartTime().format(TIME_FORMATTER) + ":00" : null)
+                .endTime(booking.getEndTime() != null ? booking.getEndTime().format(TIME_FORMATTER) + ":00" : null)
+                .status(booking.getStatus())
+                .price(booking.getPrice())
+                .createdAt(booking.getCreatedAt() != null ? booking.getCreatedAt().format(DATETIME_FORMATTER) : null)
+                .address(booking.getAddress())
+                .build();
     }
 
     public BookingByDateResponse getBookingDataByDate(Long courtGroupId, LocalDate date) {

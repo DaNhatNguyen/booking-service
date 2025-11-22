@@ -12,6 +12,14 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 50MB
 
 jwt:
   signerKey: "58242ea255084e90898781e7807ef38c133ae417acd124956609f828883401c9"
+
+file:
+  upload-dir: uploads/court-images

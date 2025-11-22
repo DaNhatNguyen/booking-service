@@ -28,4 +28,7 @@ public class Court {
 
     @Column(name = "created_at")
     LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    LocalDateTime updatedAt;
 }

@@ -11,12 +11,6 @@ import java.util.List;
 
 @Repository
 public interface CourtPriceRepository extends JpaRepository<CourtPrice, Long> {
-    List<CourtPrice> findByCourtId(Long courtId);
-
-    @Query("SELECT cp FROM CourtPrice cp WHERE cp.courtId = :courtId AND " +
-            "(cp.effectiveDate IS NULL OR cp.effectiveDate <= :date)")
-    List<CourtPrice> findActivePricesByCourtId(@Param("courtId") Long courtId,
-                                               @Param("date") LocalDate date);
 
     @Query("SELECT cp FROM CourtPrice cp WHERE cp.courtGroupId = :courtGroupId AND " +
             "cp.dayType = :dayType AND (cp.effectiveDate IS NULL OR cp.effectiveDate <= :date) " +
@@ -29,4 +23,8 @@ public interface CourtPriceRepository extends JpaRepository<CourtPrice, Long> {
             "cp.dayType = :dayType ORDER BY cp.effectiveDate DESC")
     List<CourtPrice> findLatestPricesByCourtGroupAndDayType(@Param("courtGroupId") Long courtGroupId,
                                                             @Param("dayType") String dayType);
+    
+    List<CourtPrice> findByCourtGroupId(Long courtGroupId);
+    
+    CourtPrice findByCourtGroupIdAndTimeSlotIdAndDayType(Long courtGroupId, Long timeSlotId, String dayType);
 }

@@ -4,36 +4,17 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.time.LocalDateTime;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class CourtResponse {
-
+public class UpdateBookingStatusResponse {
     Long id;
-
-    @JsonProperty("court_group_id")
-    Long courtGroupId;
-
-    String name;
-
-    String status; // "available" or "locked"
-
-    @JsonProperty("created_at")
-    LocalDateTime createdAt;
-
+    String status;
+    
     @JsonProperty("updated_at")
-    LocalDateTime updatedAt;
+    String updatedAt;
 }
-
-
-
-
-
-
-
 
 
