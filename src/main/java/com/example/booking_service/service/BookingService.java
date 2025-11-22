@@ -165,6 +165,27 @@ public class BookingService {
                 .build();
     }
 
+    public CreateBookingResponse confirmBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        booking.setStatus("CONFIRMED");
+        Booking saved = bookingRepository.save(booking);
+
+        return CreateBookingResponse.builder()
+                .bookingId(saved.getId())
+                .userId(saved.getUserId())
+                .courtId(saved.getCourtId())
+                .bookingDate(saved.getBookingDate() != null ? saved.getBookingDate().toString() : null)
+                .startTime(formatTime(saved.getStartTime()))
+                .endTime(formatTime(saved.getEndTime()))
+                .status(saved.getStatus())
+                .totalPrice(saved.getPrice())
+                .address(saved.getAddress())
+                .message("Booking confirmed successfully.")
+                .build();
+    }
+
     private boolean isWeekend(LocalDate date) {
         java.time.DayOfWeek dayOfWeek = date.getDayOfWeek();
         return dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;

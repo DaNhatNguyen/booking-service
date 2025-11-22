@@ -8,7 +8,11 @@ public enum ErrorCode {
     USER_NOT_EXISTED(1004, "User not existed"),
     UNAUTHENTICATED(1005, "Unauthenticated"),
     COURT_NOT_EXISTED(1006, "Court not existed"),
-    COURT_GROUP_NOT_EXISTED(1007, "Court group not existed")
+    COURT_GROUP_NOT_EXISTED(1007, "Court group not existed"),
+    BOOKING_NOT_EXISTED(1008, "Booking not existed"),
+    REVIEW_NOT_ALLOWED(1009, "User is not allowed to review this court"),
+    REVIEW_ALREADY_EXISTS(1010, "Review already exists for this booking"),
+    INVALID_RATING(1011, "Rating must be between 1 and 5")
     ;
     private int code;
     private String message;

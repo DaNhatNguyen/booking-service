@@ -39,4 +39,12 @@ public class BookingController {
                 .result(response)
                 .build();
     }
+
+    @PostMapping("/{bookingId}/confirm")
+    public ApiResponse<CreateBookingResponse> confirmBooking(@PathVariable Long bookingId) {
+        CreateBookingResponse response = bookingService.confirmBooking(bookingId);
+        return ApiResponse.<CreateBookingResponse>builder()
+                .result(response)
+                .build();
+    }
 }

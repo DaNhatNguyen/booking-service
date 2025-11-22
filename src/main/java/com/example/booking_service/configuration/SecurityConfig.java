@@ -41,6 +41,7 @@ public class SecurityConfig {
         // các enpoint public
         httpSecurity.authorizeHttpRequests(request ->
                 request.requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/reviews/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/users")
 //                        .hasAnyAuthority("ROLE_ADMIN") // with admin can access to getUser
                         .hasRole(Role.ADMIN.name()) // with admin can access to getUser

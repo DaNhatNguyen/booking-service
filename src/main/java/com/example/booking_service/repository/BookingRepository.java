@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
@@ -20,4 +21,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                                       @Param("date") LocalDate date);
 
     List<Booking> findByUserId(Long userId);
+
+    @Query("SELECT b FROM Booking b " +
+            "WHERE b.userId = :userId " +
+            "AND b.status = 'CONFIRMED' " +
+            "AND b.courtId IN (SELECT c.id FROM Court c WHERE c.courtGroupId = :courtGroupId) " +
+            "ORDER BY b.bookingDate DESC, b.createdAt DESC")
+    List<Booking> findConfirmedBookingsForUserAndCourtGroup(@Param("userId") Long userId,
+                                                            @Param("courtGroupId") Long courtGroupId);
 }
