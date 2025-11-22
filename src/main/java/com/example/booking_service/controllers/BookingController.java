@@ -8,6 +8,7 @@ import com.example.booking_service.dto.response.BookingDetailResponse;
 import com.example.booking_service.dto.response.BookingListResponse;
 import com.example.booking_service.dto.response.CreateBookingResponse;
 import com.example.booking_service.dto.response.UpdateBookingStatusResponse;
+import com.example.booking_service.dto.response.UserBookingHistoryResponse;
 import com.example.booking_service.service.BookingService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/bookings")
@@ -87,6 +89,14 @@ public class BookingController {
         CreateBookingResponse response = bookingService.createBooking(request);
         return ApiResponse.<CreateBookingResponse>builder()
                 .result(response)
+                .build();
+    }
+
+    @GetMapping("/user/{userId}")
+    public ApiResponse<List<UserBookingHistoryResponse>> getUserBookings(@PathVariable Long userId) {
+        List<UserBookingHistoryResponse> bookings = bookingService.getBookingsByUserId(userId);
+        return ApiResponse.<List<UserBookingHistoryResponse>>builder()
+                .result(bookings)
                 .build();
     }
 }

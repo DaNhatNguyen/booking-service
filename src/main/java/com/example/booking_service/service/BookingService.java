@@ -333,6 +333,72 @@ public class BookingService {
                 .build();
     }
 
+    public List<UserBookingHistoryResponse> getBookingsByUserId(Long userId) {
+        // Get all bookings for the user
+        List<Booking> bookings = bookingRepository.findByUserId(userId);
+        
+        if (bookings.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        // Get unique court IDs from bookings
+        List<Long> courtIds = bookings.stream()
+                .map(Booking::getCourtId)
+                .distinct()
+                .collect(Collectors.toList());
+        
+        // Get courts information
+        List<Court> courts = courtRepository.findAllById(courtIds);
+        Map<Long, Court> courtMap = courts.stream()
+                .collect(Collectors.toMap(Court::getId, court -> court));
+        
+        // Get unique court group IDs
+        List<Long> courtGroupIds = courts.stream()
+                .map(Court::getCourtGroupId)
+                .distinct()
+                .collect(Collectors.toList());
+        
+        // Get court groups information
+        List<CourtGroup> courtGroups = courtGroupRepository.findAllById(courtGroupIds);
+        Map<Long, CourtGroup> courtGroupMap = courtGroups.stream()
+                .collect(Collectors.toMap(CourtGroup::getId, cg -> cg));
+        
+        // Build response list
+        return bookings.stream()
+                .map(booking -> {
+                    Court court = courtMap.get(booking.getCourtId());
+                    if (court == null) return null;
+                    
+                    CourtGroup courtGroup = courtGroupMap.get(court.getCourtGroupId());
+                    if (courtGroup == null) return null;
+                    
+                    return UserBookingHistoryResponse.builder()
+                            .id(booking.getId())
+                            .date(booking.getBookingDate().toString())
+                            .timeSlot(UserBookingHistoryResponse.TimeSlotInfo.builder()
+                                    .startTime(formatTime(booking.getStartTime()))
+                                    .endTime(formatTime(booking.getEndTime()))
+                                    .build())
+                            .status(booking.getStatus().toLowerCase())
+                            .courtName(court.getName())
+                            .courtGroupName(courtGroup.getName())
+                            .address(courtGroup.getAddress())
+                            .build();
+                })
+                .filter(Objects::nonNull)
+                .sorted((b1, b2) -> {
+                    // Sort by date descending (newest first)
+                    try {
+                        LocalDate date1 = LocalDate.parse(b1.getDate());
+                        LocalDate date2 = LocalDate.parse(b2.getDate());
+                        return date2.compareTo(date1);
+                    } catch (Exception e) {
+                        return 0;
+                    }
+                })
+                .collect(Collectors.toList());
+    }
+
     private boolean isWeekend(LocalDate date) {
         java.time.DayOfWeek dayOfWeek = date.getDayOfWeek();
         return dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;
