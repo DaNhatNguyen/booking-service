@@ -34,7 +34,9 @@ public class SecurityConfig {
             "/auth/**",
             "/court-groups/**",
             "/court-groups",
-            "/courts/search"
+            "/courts/search",
+            "/files/**",  // Allow public access to uploaded files (images)
+            "/uploads/**"  // Allow public access to uploads folder (for payment QR codes, etc)
     };
 
     @Value("${jwt.signerKey}")

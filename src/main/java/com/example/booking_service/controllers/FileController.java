@@ -1,5 +1,6 @@
 package com.example.booking_service.controllers;
 
+import com.example.booking_service.dto.request.ApiResponse;
 import com.example.booking_service.service.FileStorageService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -9,12 +10,14 @@ import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/files")
@@ -55,7 +58,49 @@ public class FileController {
             return ResponseEntity.notFound().build();
         }
     }
+    
+    /**
+     * Upload single image
+     * Returns full URL instead of just filename
+     */
+    @PostMapping("/upload")
+    public ApiResponse<Map<String, String>> uploadFile(@RequestParam("file") MultipartFile file) {
+        String filename = fileStorageService.storeFile(file);
+        String fileUrl = fileStorageService.getFileUrl(filename);
+        
+        Map<String, String> result = new HashMap<>();
+        result.put("filename", filename);
+        result.put("url", fileUrl);
+        
+        return ApiResponse.<Map<String, String>>builder()
+                .message("File uploaded successfully")
+                .result(result)
+                .build();
+    }
+    
+    /**
+     * Upload multiple images
+     * Returns list of full URLs
+     */
+    @PostMapping("/upload-multiple")
+    public ApiResponse<List<Map<String, String>>> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
+        List<String> filenames = fileStorageService.storeFiles(files);
+        List<Map<String, String>> result = new ArrayList<>();
+        
+        for (String filename : filenames) {
+            Map<String, String> fileInfo = new HashMap<>();
+            fileInfo.put("filename", filename);
+            fileInfo.put("url", fileStorageService.getFileUrl(filename));
+            result.add(fileInfo);
+        }
+        
+        return ApiResponse.<List<Map<String, String>>>builder()
+                .message("Files uploaded successfully")
+                .result(result)
+                .build();
+    }
 }
+
 
 
 

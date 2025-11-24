@@ -9,12 +9,13 @@ import com.example.booking_service.repository.*;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -35,6 +36,7 @@ public class CourtGroupService {
     CourtPriceRepository courtPriceRepository;
     TimeSlotRepository timeSlotRepository;
     FileStorageService fileStorageService;
+    UserRepository userRepository;
 
     public List<CourtGroupResponse> getCourtGroups(String province, String district) {
         return courtGroupRepository.findByProvinceAndDistrict(province, district)
@@ -155,6 +157,196 @@ public class CourtGroupService {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
+    }
+    
+    // ========== ADMIN APIs ==========
+    
+    /**
+     * Get all court groups with pagination and filtering (Admin only)
+     */
+    public CourtGroupAdminListResponse getAllCourtGroups(String status, int page, int limit) {
+        Pageable pageable = PageRequest.of(page - 1, limit);
+        Page<CourtGroup> courtGroupPage = courtGroupRepository.findAllWithFilters(status, pageable);
+        
+        List<CourtGroupListResponse> courtGroups = courtGroupPage.getContent()
+                .stream()
+                .map(this::toListResponse)
+                .toList();
+        
+        PaginationResponse pagination = PaginationResponse.builder()
+                .total(courtGroupPage.getTotalElements())
+                .page(page)
+                .limit(limit)
+                .totalPages(courtGroupPage.getTotalPages())
+                .build();
+        
+        return CourtGroupAdminListResponse.builder()
+                .result(courtGroups)
+                .pagination(pagination)
+                .build();
+    }
+    
+    /**
+     * Get court group detail by ID with owner info, courts, and stats
+     */
+    public CourtGroupDetailResponse getCourtGroupDetailById(Long id) {
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        return toDetailResponse(courtGroup);
+    }
+    
+    /**
+     * Approve a court group (change status from pending to approved)
+     */
+    @Transactional
+    public CourtGroupListResponse approveCourtGroup(Long id) {
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        if ("approved".equals(courtGroup.getStatus())) {
+            throw new AppException(ErrorCode.COURT_GROUP_ALREADY_APPROVED);
+        }
+        
+        courtGroup.setStatus("approved");
+        CourtGroup updatedCourtGroup = courtGroupRepository.save(courtGroup);
+        
+        return toListResponse(updatedCourtGroup);
+    }
+    
+    /**
+     * Reject a court group
+     */
+    @Transactional
+    public CourtGroupListResponse rejectCourtGroup(Long id, String reason) {
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        courtGroup.setStatus("rejected");
+        CourtGroup updatedCourtGroup = courtGroupRepository.save(courtGroup);
+        
+        return toListResponse(updatedCourtGroup);
+    }
+    
+    /**
+     * Delete a court group (only if no active bookings)
+     */
+    @Transactional
+    public void deleteCourtGroup(Long id) {
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        // Check for active bookings
+        long activeBookings = bookingRepository.countActiveBookingsByCourtGroupId(id);
+        
+        if (activeBookings > 0) {
+            throw new AppException(ErrorCode.CANNOT_DELETE_COURT_GROUP);
+        }
+        
+        // Delete court group (CASCADE will handle related records)
+        courtGroupRepository.delete(courtGroup);
+    }
+    
+    // ========== Helper Methods ==========
+    
+    private CourtGroupListResponse toListResponse(CourtGroup entity) {
+        OwnerResponse owner = null;
+        if (entity.getOwnerId() != null) {
+            owner = getUserById(entity.getOwnerId());
+        }
+        
+        return CourtGroupListResponse.builder()
+                .id(entity.getId())
+                .stringId(entity.getId() != null ? entity.getId().toString() : null)
+                .name(entity.getName())
+                .type(entity.getType())
+                .address(entity.getAddress())
+                .district(entity.getDistrict())
+                .province(entity.getProvince())
+                .phone(entity.getPhoneNumber())
+                .description(entity.getDescription())
+                .image(entity.getImage())
+                .rating(entity.getRating())
+                .openTime(formatTime(entity.getOpenTime()))
+                .closeTime(formatTime(entity.getCloseTime()))
+                .status(entity.getStatus())
+                .createdAt(formatDateTime(entity.getCreatedAt()))
+                .ownerId(entity.getOwnerId())
+                .owner(owner)
+                .build();
+    }
+    
+    private CourtGroupDetailResponse toDetailResponse(CourtGroup entity) {
+        OwnerResponse owner = null;
+        if (entity.getOwnerId() != null) {
+            owner = getUserById(entity.getOwnerId());
+        }
+        
+        // Get courts
+        List<Court> courts = courtRepository.findByCourtGroupId(entity.getId());
+        List<CourtSummaryResponse> courtSummaries = courts.stream()
+                .map(this::toCourtSummary)
+                .toList();
+        
+        // Get stats
+        long totalBookings = bookingRepository.countTotalBookingsByCourtGroupId(entity.getId());
+        Double totalRevenue = bookingRepository.sumRevenueByCourtGroupId(entity.getId());
+        
+        return CourtGroupDetailResponse.builder()
+                .id(entity.getId())
+                .stringId(entity.getId() != null ? entity.getId().toString() : null)
+                .name(entity.getName())
+                .type(entity.getType())
+                .address(entity.getAddress())
+                .district(entity.getDistrict())
+                .province(entity.getProvince())
+                .phone(entity.getPhoneNumber())
+                .description(entity.getDescription())
+                .image(entity.getImage())
+                .rating(entity.getRating())
+                .openTime(formatTime(entity.getOpenTime()))
+                .closeTime(formatTime(entity.getCloseTime()))
+                .status(entity.getStatus())
+                .createdAt(formatDateTime(entity.getCreatedAt()))
+                .ownerId(entity.getOwnerId())
+                .owner(owner)
+                .courts(courtSummaries)
+                .totalBookings(totalBookings)
+                .totalRevenue(totalRevenue != null ? totalRevenue : 0.0)
+                .build();
+    }
+    
+    private CourtSummaryResponse toCourtSummary(Court court) {
+        return CourtSummaryResponse.builder()
+                .id(court.getId())
+                .name(court.getName())
+                .status(court.getIsActive() == 1 ? "available" : "unavailable")
+                .isActive(court.getIsActive())
+                .build();
+    }
+    
+    private OwnerResponse getUserById(Long userId) {
+        Optional<User> userOpt = userRepository.findById(userId);
+        if (userOpt.isEmpty()) {
+            return null;
+        }
+
+        User user = userOpt.get();
+        return OwnerResponse.builder()
+                .id(user.getId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .role(user.getRole() != null ? user.getRole().name() : null)
+                .build();
+    }
+    
+    private String formatDateTime(LocalDateTime dateTime) {
+        if (dateTime == null) {
+            return null;
+        }
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+        return dateTime.format(formatter);
     }
 }
 

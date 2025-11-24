@@ -3,18 +3,14 @@ package com.example.booking_service.controllers;
 import com.example.booking_service.dto.request.ApiResponse;
 import com.example.booking_service.dto.request.CreateBookingRequest;
 import com.example.booking_service.dto.request.UpdateBookingStatusRequest;
-import com.example.booking_service.dto.response.BookingByDateResponse;
-import com.example.booking_service.dto.response.BookingDetailResponse;
-import com.example.booking_service.dto.response.BookingListResponse;
-import com.example.booking_service.dto.response.CreateBookingResponse;
-import com.example.booking_service.dto.response.UpdateBookingStatusResponse;
-import com.example.booking_service.dto.response.UserBookingHistoryResponse;
+import com.example.booking_service.dto.response.*;
 import com.example.booking_service.service.BookingService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -97,6 +93,52 @@ public class BookingController {
         List<UserBookingHistoryResponse> bookings = bookingService.getBookingsByUserId(userId);
         return ApiResponse.<List<UserBookingHistoryResponse>>builder()
                 .result(bookings)
+                .build();
+    }
+
+    @PostMapping("/{bookingId}/confirm")
+    public ApiResponse<CreateBookingResponse> confirmBooking(@PathVariable Long bookingId) {
+        CreateBookingResponse response = bookingService.confirmBooking(bookingId);
+        return ApiResponse.<CreateBookingResponse>builder()
+                .result(response)
+                .build();
+    }
+
+    /**
+     * Payment API 1: Get payment information for a booking
+     * GET /api/bookings/{bookingId}/payment-info
+     */
+    @GetMapping("/{bookingId}/payment-info")
+    public ApiResponse<PaymentInfoResponse> getPaymentInfo(@PathVariable Long bookingId) {
+        PaymentInfoResponse response = bookingService.getPaymentInfo(bookingId);
+        return ApiResponse.<PaymentInfoResponse>builder()
+                .result(response)
+                .build();
+    }
+
+    /**
+     * Payment API 2: Confirm payment with proof image upload
+     * POST /api/bookings/{bookingId}/confirm-payment
+     */
+    @PostMapping("/{bookingId}/confirm-payment")
+    public ApiResponse<ConfirmPaymentResponse> confirmPayment(
+            @PathVariable Long bookingId,
+            @RequestParam("payment_proof") MultipartFile paymentProof) {
+        ConfirmPaymentResponse response = bookingService.confirmPayment(bookingId, paymentProof);
+        return ApiResponse.<ConfirmPaymentResponse>builder()
+                .result(response)
+                .build();
+    }
+
+    /**
+     * Payment API 3: Cancel expired booking (optional - for manual call)
+     * DELETE /api/bookings/{bookingId}/cancel-expired
+     */
+    @DeleteMapping("/{bookingId}/cancel-expired")
+    public ApiResponse<CancelExpiredResponse> cancelExpiredBooking(@PathVariable Long bookingId) {
+        CancelExpiredResponse response = bookingService.cancelExpiredBooking(bookingId);
+        return ApiResponse.<CancelExpiredResponse>builder()
+                .result(response)
                 .build();
     }
 }

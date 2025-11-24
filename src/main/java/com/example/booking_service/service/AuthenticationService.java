@@ -3,12 +3,15 @@ package com.example.booking_service.service;
 import com.example.booking_service.dto.request.AuthenticationRequest;
 import com.example.booking_service.dto.request.IntrospectRequest;
 import com.example.booking_service.dto.request.LogoutRequest;
+import com.example.booking_service.dto.request.RegisterOwnerRequest;
 import com.example.booking_service.dto.request.RegisterRequest;
 import com.example.booking_service.dto.response.AuthenticationResponse;
 import com.example.booking_service.dto.response.IntrospectResponse;
+import com.example.booking_service.dto.response.RegisterOwnerResponse;
 import com.example.booking_service.dto.response.RegisterResponse;
 import com.example.booking_service.entity.InvalidatedToken;
 import com.example.booking_service.entity.User;
+import com.example.booking_service.enums.OwnerStatus;
 import com.example.booking_service.enums.Role;
 import com.example.booking_service.exception.AppException;
 import com.example.booking_service.exception.ErrorCode;
@@ -29,13 +32,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.text.ParseException;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
-import java.util.StringJoiner;
 import java.util.UUID;
 
 @Slf4j
@@ -43,9 +47,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthenticationService {
+    
+    static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    
     UserRepository userRepository;
     InvalidatedTokenRepository invalidatedTokenRepository;
     UserMapper userMapper;
+    FileStorageService fileStorageService;
 
     @NonFinal // đánh dấu để không inject vào constructor
     @Value("${jwt.signerKey}") // đọc giá trị từ file cấu hình gán vào biến
@@ -191,7 +199,123 @@ public class AuthenticationService {
             return "";
         }
 
-        // Trả về quyền ở dạng ROLE_... để tương thích với Spring Security
-        return "ROLE_" + user.getRole().name();
+        // Không thêm prefix "ROLE_" vì SecurityConfig đã tự động thêm
+        // JWT scope: "ADMIN" → Spring Security convert thành: "ROLE_ADMIN"
+        return user.getRole().name();
+    }
+
+    /**
+     * Register new owner account
+     * Upload files, hash password, create user with OWNER role and PENDING status
+     * 
+     * @param request Owner registration data
+     * @param idCardFront ID card front image
+     * @param idCardBack ID card back image
+     * @param bankQrImage Bank QR code image (optional)
+     * @return RegisterOwnerResponse
+     */
+    @Transactional
+    public RegisterOwnerResponse registerOwner(
+            RegisterOwnerRequest request,
+            MultipartFile idCardFront,
+            MultipartFile idCardBack,
+            MultipartFile bankQrImage) {
+        
+        try {
+            log.info("Processing owner registration for email: {}", request.getEmail());
+            
+            // 1. Validate email doesn't exist
+            if (userRepository.existsByEmail(request.getEmail())) {
+                throw new AppException(ErrorCode.USER_EXISTED);
+            }
+            
+            // 2. Validate required files
+            if (idCardFront == null || idCardFront.isEmpty()) {
+                throw new RuntimeException("ID card front image is required");
+            }
+            if (idCardBack == null || idCardBack.isEmpty()) {
+                throw new RuntimeException("ID card back image is required");
+            }
+            
+            // 3. Validate file types (must be images)
+            validateImageFile(idCardFront, "ID card front");
+            validateImageFile(idCardBack, "ID card back");
+            if (bankQrImage != null && !bankQrImage.isEmpty()) {
+                validateImageFile(bankQrImage, "Bank QR code");
+            }
+            
+            // 4. Upload files
+            String idCardFrontFilename = fileStorageService.storeFile(idCardFront);
+            String idCardBackFilename = fileStorageService.storeFile(idCardBack);
+            String bankQrImageFilename = null;
+            
+            if (bankQrImage != null && !bankQrImage.isEmpty()) {
+                bankQrImageFilename = fileStorageService.storeFile(bankQrImage);
+            }
+            
+            log.info("Files uploaded successfully: front={}, back={}, qr={}", 
+                    idCardFrontFilename, idCardBackFilename, bankQrImageFilename);
+            
+            // 5. Hash password
+            PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
+            String hashedPassword = passwordEncoder.encode(request.getPassword());
+            
+            // 6. Create user with OWNER role and PENDING status
+            User newOwner = User.builder()
+                    .fullName(request.getFullName())
+                    .email(request.getEmail())
+                    .password(hashedPassword)
+                    .phone(request.getPhone())
+                    .role(Role.OWNER)
+                    .ownerStatus(OwnerStatus.PENDING)
+                    .idCardFront(idCardFrontFilename)
+                    .idCardBack(idCardBackFilename)
+                    .bankQrImage(bankQrImageFilename)
+                    .bankName(request.getBankName())
+                    .bankAccountNumber(request.getBankAccountNumber())
+                    .bankAccountName(request.getBankAccountName())
+                    .build();
+            
+            User savedOwner = userRepository.save(newOwner);
+            
+            log.info("Owner registration successful: id={}, email={}", 
+                    savedOwner.getId(), savedOwner.getEmail());
+            
+            // 7. Build response
+            return RegisterOwnerResponse.builder()
+                    .id(savedOwner.getId())
+                    .fullName(savedOwner.getFullName())
+                    .email(savedOwner.getEmail())
+                    .phone(savedOwner.getPhone())
+                    .role(savedOwner.getRole().name())
+                    .ownerStatus(savedOwner.getOwnerStatus().name())
+                    .createdAt(savedOwner.getCreatedAt().format(DATETIME_FORMATTER))
+                    .message("Đăng ký thành công! Chúng tôi sẽ xem xét và phản hồi trong 24-48 giờ.")
+                    .build();
+                    
+        } catch (AppException e) {
+            log.error("Owner registration failed: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error during owner registration", e);
+            throw new RuntimeException("Đăng ký thất bại: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Validate uploaded file is an image
+     */
+    private void validateImageFile(MultipartFile file, String fieldName) {
+        String contentType = file.getContentType();
+        
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new RuntimeException(fieldName + " must be an image file");
+        }
+        
+        // Check file size (max 10MB)
+        long maxSizeBytes = 10 * 1024 * 1024; // 10MB
+        if (file.getSize() > maxSizeBytes) {
+            throw new RuntimeException(fieldName + " size must be less than 10MB");
+        }
     }
 }

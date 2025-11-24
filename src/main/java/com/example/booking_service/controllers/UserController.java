@@ -1,19 +1,25 @@
 package com.example.booking_service.controllers;
 
 import com.example.booking_service.dto.request.ApiResponse;
+import com.example.booking_service.dto.request.UpdateUserRequest;
 import com.example.booking_service.dto.request.UserCreationRequest;
-import com.example.booking_service.dto.request.UserUpdationRequest;
+import com.example.booking_service.dto.response.UserAdminListResponse;
+import com.example.booking_service.dto.response.UserDetailResponse;
 import com.example.booking_service.dto.response.UserResponse;
+import com.example.booking_service.entity.User;
+import com.example.booking_service.enums.Role;
+import com.example.booking_service.exception.AppException;
+import com.example.booking_service.exception.ErrorCode;
+import com.example.booking_service.repository.UserRepository;
 import com.example.booking_service.service.UserService;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @Slf4j
 @RestController
@@ -22,38 +28,42 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserController {
     UserService userService;
-
-//    @Autowired
-//    private UserService userService;
+    UserRepository userRepository;
 
     @PostMapping
     public ApiResponse<UserResponse> createUser(@RequestBody @Valid UserCreationRequest request) {
-
-//        ApiResponse apiResponse = new ApiResponse();
-//
-//        apiResponse.setResult(userService.createUser(request));
-
         return ApiResponse.<UserResponse>builder()
                 .result(userService.createUser(request))
                 .build();
     }
 
     @GetMapping
-    public ApiResponse<List<UserResponse>> getUsers() {
+    public ApiResponse<UserAdminListResponse> getUsers(
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int limit) {
 
+        // Debug: Log current user authorities
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        log.info("username: {}", authentication.getName());
-        authentication.getAuthorities()
-                .forEach(grantedAuthority -> log.info(grantedAuthority.getAuthority()));
+        log.info("Current user: {}", authentication.getName());
+        authentication.getAuthorities().forEach(auth -> 
+            log.info("Authority: {}", auth.getAuthority())
+        );
 
-        return ApiResponse.<List<UserResponse>>builder()
-                .result(userService.getUsers())
+        // Check admin role
+        checkAdminRole();
+
+        return ApiResponse.<UserAdminListResponse>builder()
+                .result(userService.getUsersAdmin(role, search, page, limit))
                 .build();
     }
 
     @GetMapping("/{userId}")
-    public UserResponse getUserById(@PathVariable String userId) {
-        return userService.getUserById(userId);
+    public ApiResponse<UserDetailResponse> getUserById(@PathVariable Long userId) {
+        return ApiResponse.<UserDetailResponse>builder()
+                .result(userService.getUserDetailById(userId))
+                .build();
     }
 
     // get info of current user
@@ -65,15 +75,45 @@ public class UserController {
     }
 
     @PutMapping("/{userId}")
-    public UserResponse updateUser(@PathVariable String userId, @RequestBody UserUpdationRequest request) {
-        return userService.updateUser(userId, request);
+    public ApiResponse<UserDetailResponse> updateUser(
+            @PathVariable Long userId, 
+            @RequestBody UpdateUserRequest request) {
+        return ApiResponse.<UserDetailResponse>builder()
+                .message("User updated successfully")
+                .result(userService.updateUserInfo(userId, request))
+                .build();
     }
 
     @DeleteMapping("/{userId}")
-    public String deleteUser(@PathVariable String userId) {
-        userService.deleteUser(userId);
-        return "User has been deleted";
+    public ApiResponse<String> deleteUser(@PathVariable Long userId) {
+        // Check admin role
+        checkAdminRole();
+        
+        userService.deleteUserAdmin(userId);
+        
+        return ApiResponse.<String>builder()
+                .message("User deleted successfully")
+                .build();
     }
-
-
+    
+    // ========== Helper Methods ==========
+    
+    /**
+     * Check if the current user is an admin
+     */
+    private void checkAdminRole() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        
+        if (user.getRole() != Role.ADMIN) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+    }
 }

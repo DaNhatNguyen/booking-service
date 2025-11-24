@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,6 +38,7 @@ public class BookingService {
     CourtPriceRepository courtPriceRepository;
     BookingRepository bookingRepository;
     UserRepository userRepository;
+    FileStorageService fileStorageService;
 
     private String formatTime(LocalTime time) {
         if (time == null) return null;
@@ -164,7 +166,7 @@ public class BookingService {
 
     private BookingDetailResponse toBookingDetailResponse(Booking booking) {
         // Fetch related entities
-        User user = userRepository.findById(booking.getUserId().toString()).orElse(null);
+        User user = userRepository.findById(booking.getUserId()).orElse(null);
         Court court = courtRepository.findById(booking.getCourtId()).orElse(null);
         CourtGroup courtGroup = null;
         
@@ -302,14 +304,14 @@ public class BookingService {
                 .max(LocalTime::compareTo)
                 .orElseThrow(() -> new RuntimeException("No time slots provided"));
         
-        // Create booking entity
+        // Create booking entity with PAYING status
         Booking booking = Booking.builder()
                 .userId(request.getUserId())
                 .courtId(request.getCourtId())
                 .bookingDate(bookingDate)
                 .startTime(startTime)
                 .endTime(endTime)
-                .status(request.getStatus() != null ? request.getStatus() : "PENDING")
+                .status("PAYING")  // Set status to PAYING for payment flow
                 .price(request.getTotalPrice())
                 .address(request.getFullAddress())
                 .createdAt(LocalDateTime.now())
@@ -329,49 +331,49 @@ public class BookingService {
                 .status(savedBooking.getStatus())
                 .totalPrice(savedBooking.getPrice())
                 .address(savedBooking.getAddress())
-                .message("Booking created successfully. Please proceed to payment.")
+                .message("Đã tạo booking. Vui lòng thanh toán trong 5 phút")
                 .build();
     }
 
     public List<UserBookingHistoryResponse> getBookingsByUserId(Long userId) {
         // Get all bookings for the user
         List<Booking> bookings = bookingRepository.findByUserId(userId);
-        
+
         if (bookings.isEmpty()) {
             return Collections.emptyList();
         }
-        
+
         // Get unique court IDs from bookings
         List<Long> courtIds = bookings.stream()
                 .map(Booking::getCourtId)
                 .distinct()
                 .collect(Collectors.toList());
-        
+
         // Get courts information
         List<Court> courts = courtRepository.findAllById(courtIds);
         Map<Long, Court> courtMap = courts.stream()
                 .collect(Collectors.toMap(Court::getId, court -> court));
-        
+
         // Get unique court group IDs
         List<Long> courtGroupIds = courts.stream()
                 .map(Court::getCourtGroupId)
                 .distinct()
                 .collect(Collectors.toList());
-        
+
         // Get court groups information
         List<CourtGroup> courtGroups = courtGroupRepository.findAllById(courtGroupIds);
         Map<Long, CourtGroup> courtGroupMap = courtGroups.stream()
                 .collect(Collectors.toMap(CourtGroup::getId, cg -> cg));
-        
+
         // Build response list
         return bookings.stream()
                 .map(booking -> {
                     Court court = courtMap.get(booking.getCourtId());
                     if (court == null) return null;
-                    
+
                     CourtGroup courtGroup = courtGroupMap.get(court.getCourtGroupId());
                     if (courtGroup == null) return null;
-                    
+
                     return UserBookingHistoryResponse.builder()
                             .id(booking.getId())
                             .date(booking.getBookingDate().toString())
@@ -398,10 +400,196 @@ public class BookingService {
                 })
                 .collect(Collectors.toList());
     }
+    public CreateBookingResponse confirmBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new RuntimeException("Booking not found"));
+
+        booking.setStatus("CONFIRMED");
+        Booking saved = bookingRepository.save(booking);
+
+        return CreateBookingResponse.builder()
+                .bookingId(saved.getId())
+                .userId(saved.getUserId())
+                .courtId(saved.getCourtId())
+                .bookingDate(saved.getBookingDate() != null ? saved.getBookingDate().toString() : null)
+                .startTime(formatTime(saved.getStartTime()))
+                .endTime(formatTime(saved.getEndTime()))
+                .status(saved.getStatus())
+                .totalPrice(saved.getPrice())
+                .address(saved.getAddress())
+                .message("Booking confirmed successfully.")
+                .build();
+    }
 
     private boolean isWeekend(LocalDate date) {
         java.time.DayOfWeek dayOfWeek = date.getDayOfWeek();
         return dayOfWeek == java.time.DayOfWeek.SATURDAY || dayOfWeek == java.time.DayOfWeek.SUNDAY;
+    }
+
+    /**
+     * API 1: Get payment information for a booking
+     * Retrieves bank information of court owner for payment
+     */
+    public PaymentInfoResponse getPaymentInfo(Long bookingId) {
+        try {
+            log.info("Fetching payment info for booking: {}", bookingId);
+            
+            // Get booking
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            // Check if booking is in PAYING status
+            if (!"PAYING".equals(booking.getStatus())) {
+                throw new RuntimeException("Booking is not in PAYING status");
+            }
+            
+            // Get court
+            Court court = courtRepository.findById(booking.getCourtId())
+                    .orElseThrow(() -> new RuntimeException("Court not found"));
+            
+            // Get court group
+            CourtGroup courtGroup = courtGroupRepository.findById(court.getCourtGroupId())
+                    .orElseThrow(() -> new RuntimeException("Court group not found"));
+            
+            // Get owner (user with OWNER role)
+            User owner = userRepository.findById(courtGroup.getOwnerId())
+                    .orElseThrow(() -> new RuntimeException("Owner not found"));
+            
+            // Build address
+            String fullAddress = String.format("%s, %s, %s",
+                    courtGroup.getAddress(),
+                    courtGroup.getDistrict(),
+                    courtGroup.getProvince());
+            
+            // Build time slot info
+            PaymentInfoResponse.TimeSlotInfo timeSlotInfo = PaymentInfoResponse.TimeSlotInfo.builder()
+                    .startTime(formatTime(booking.getStartTime()))
+                    .endTime(formatTime(booking.getEndTime()))
+                    .build();
+            
+            // Build response
+            return PaymentInfoResponse.builder()
+                    .bookingId(booking.getId())
+                    .ownerBankName(owner.getBankName())
+                    .ownerBankAccountNumber(owner.getBankAccountNumber())
+                    .ownerBankAccountName(owner.getBankAccountName())
+                    .ownerBankQrImage(owner.getBankQrImage())
+                    .totalPrice(booking.getPrice())
+                    .bookingDate(booking.getBookingDate().format(DATE_FORMATTER))
+                    .timeSlots(Collections.singletonList(timeSlotInfo))
+                    .courtName(court.getName())
+                    .fullAddress(fullAddress)
+                    .createdAt(booking.getCreatedAt().format(DATETIME_FORMATTER))
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("Error fetching payment info for booking: {}", bookingId, e);
+            throw e;
+        }
+    }
+
+    /**
+     * API 2: Confirm payment with proof image
+     * Upload payment proof and update status to PENDING
+     */
+    @Transactional
+    public ConfirmPaymentResponse confirmPayment(Long bookingId, MultipartFile paymentProofFile) {
+        try {
+            log.info("Confirming payment for booking: {}", bookingId);
+            
+            // Get booking
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            // Check if booking is in PAYING status
+            if (!"PAYING".equals(booking.getStatus())) {
+                throw new RuntimeException("Booking is not in PAYING status");
+            }
+            
+            // Upload payment proof file
+            String fileName = fileStorageService.storeFile(paymentProofFile);
+            
+            // Update booking
+            booking.setStatus("PENDING");
+            booking.setPaymentProof(fileName);
+            Booking updatedBooking = bookingRepository.save(booking);
+            
+            log.info("Payment confirmed successfully for booking: {}", bookingId);
+            
+            return ConfirmPaymentResponse.builder()
+                    .bookingId(updatedBooking.getId())
+                    .status(updatedBooking.getStatus())
+                    .paymentProofUrl(fileName)
+                    .message("Đã xác nhận thanh toán. Chúng tôi sẽ xác minh trong thời gian sớm nhất.")
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("Error confirming payment for booking: {}", bookingId, e);
+            throw new RuntimeException("Error confirming payment: " + e.getMessage());
+        }
+    }
+
+    /**
+     * API 3: Cancel expired booking
+     * Delete booking that exceeded payment time (5 minutes)
+     */
+    @Transactional
+    public CancelExpiredResponse cancelExpiredBooking(Long bookingId) {
+        try {
+            log.info("Cancelling expired booking: {}", bookingId);
+            
+            // Get booking
+            Booking booking = bookingRepository.findById(bookingId)
+                    .orElseThrow(() -> new RuntimeException("Booking not found with ID: " + bookingId));
+            
+            // Check if booking is in PAYING status
+            if (!"PAYING".equals(booking.getStatus())) {
+                throw new RuntimeException("Booking is not in PAYING status");
+            }
+            
+            // Check if booking is expired (created more than 5 minutes ago)
+            LocalDateTime expiryTime = LocalDateTime.now().minusMinutes(5);
+            if (booking.getCreatedAt().isAfter(expiryTime)) {
+                throw new RuntimeException("Booking has not expired yet");
+            }
+            
+            // Delete booking
+            bookingRepository.delete(booking);
+            
+            log.info("Expired booking deleted successfully: {}", bookingId);
+            
+            return CancelExpiredResponse.builder()
+                    .bookingId(bookingId)
+                    .message("Đã hủy booking do hết thời gian thanh toán")
+                    .build();
+                    
+        } catch (Exception e) {
+            log.error("Error cancelling expired booking: {}", bookingId, e);
+            throw e;
+        }
+    }
+
+    /**
+     * Delete expired bookings automatically
+     * Called by scheduled job
+     */
+    @Transactional
+    public int deleteExpiredBookings() {
+        try {
+            LocalDateTime expiryTime = LocalDateTime.now().minusMinutes(5);
+            List<Booking> expiredBookings = bookingRepository.findByStatusAndCreatedAtBefore("PAYING", expiryTime);
+            
+            if (!expiredBookings.isEmpty()) {
+                bookingRepository.deleteAll(expiredBookings);
+                log.info("Deleted {} expired bookings", expiredBookings.size());
+                return expiredBookings.size();
+            }
+            
+            return 0;
+        } catch (Exception e) {
+            log.error("Error deleting expired bookings", e);
+            return 0;
+        }
     }
 
     // Inner class for time slot selection

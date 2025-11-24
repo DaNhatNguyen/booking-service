@@ -2,13 +2,21 @@ package com.example.booking_service.controllers;
 
 import com.example.booking_service.dto.request.ApiResponse;
 import com.example.booking_service.dto.request.CreateCourtGroupRequest;
-import com.example.booking_service.dto.response.CourtGroupResponse;
+import com.example.booking_service.dto.request.RejectCourtGroupRequest;
+import com.example.booking_service.dto.response.*;
+import com.example.booking_service.entity.User;
+import com.example.booking_service.enums.Role;
+import com.example.booking_service.exception.AppException;
+import com.example.booking_service.exception.ErrorCode;
+import com.example.booking_service.repository.UserRepository;
 // import com.example.booking_service.service.CourtAvailabilityService;
 import com.example.booking_service.service.CourtGroupService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,7 +29,7 @@ import java.util.List;
 public class CourtGroupController {
 
     CourtGroupService courtGroupService;
-    // CourtAvailabilityService availabilityService;
+    UserRepository userRepository;
 
     @GetMapping
     public ApiResponse<List<CourtGroupResponse>> getCourtGroups(@RequestParam String province,
@@ -32,9 +40,75 @@ public class CourtGroupController {
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<CourtGroupResponse> getCourtGroupById(@PathVariable Long id) {
-        return ApiResponse.<CourtGroupResponse>builder()
-                .result(courtGroupService.getCourtGroupById(id))
+    public ApiResponse<CourtGroupDetailResponse> getCourtGroupById(@PathVariable Long id) {
+        return ApiResponse.<CourtGroupDetailResponse>builder()
+                .result(courtGroupService.getCourtGroupDetailById(id))
+                .build();
+    }
+    
+    /**
+     * Get all court groups (Admin only)
+     * Query params: status (optional), page (default: 1), limit (default: 20)
+     */
+    @GetMapping("/all")
+    public ApiResponse<CourtGroupAdminListResponse> getAllCourtGroups(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int limit) {
+        
+        // Check admin role
+        checkAdminRole();
+        
+        return ApiResponse.<CourtGroupAdminListResponse>builder()
+                .result(courtGroupService.getAllCourtGroups(status, page, limit))
+                .build();
+    }
+    
+    /**
+     * Approve a court group (Admin only)
+     */
+    @PatchMapping("/{id}/approve")
+    public ApiResponse<CourtGroupListResponse> approveCourtGroup(@PathVariable Long id) {
+        // Check admin role
+        checkAdminRole();
+        
+        return ApiResponse.<CourtGroupListResponse>builder()
+                .message("Court group approved successfully")
+                .result(courtGroupService.approveCourtGroup(id))
+                .build();
+    }
+    
+    /**
+     * Reject a court group (Admin only)
+     */
+    @PatchMapping("/{id}/reject")
+    public ApiResponse<CourtGroupListResponse> rejectCourtGroup(
+            @PathVariable Long id,
+            @RequestBody(required = false) RejectCourtGroupRequest request) {
+        
+        // Check admin role
+        checkAdminRole();
+        
+        String reason = (request != null) ? request.getReason() : null;
+        
+        return ApiResponse.<CourtGroupListResponse>builder()
+                .message("Court group rejected successfully")
+                .result(courtGroupService.rejectCourtGroup(id, reason))
+                .build();
+    }
+    
+    /**
+     * Delete a court group (Admin or Owner)
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<String> deleteCourtGroup(@PathVariable Long id) {
+        // Check if user is admin or owner of the court group
+        checkDeletePermission(id);
+        
+        courtGroupService.deleteCourtGroup(id);
+        
+        return ApiResponse.<String>builder()
+                .message("Court group deleted successfully")
                 .build();
     }
 
@@ -79,6 +153,53 @@ public class CourtGroupController {
         return ApiResponse.<CourtGroupResponse>builder()
                 .result(courtGroupService.createCourtGroup(request, images))
                 .build();
+    }
+    
+    // ========== Helper Methods ==========
+    
+    /**
+     * Check if the current user is an admin
+     */
+    private void checkAdminRole() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        
+        if (user.getRole() != Role.ADMIN) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+    }
+    
+    /**
+     * Check if the current user can delete the court group (Admin or Owner)
+     */
+    private void checkDeletePermission(Long courtGroupId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        
+        // Admin can delete any court group
+        if (user.getRole() == Role.ADMIN) {
+            return;
+        }
+        
+        // Owner can only delete their own court group
+        CourtGroupDetailResponse courtGroup = courtGroupService.getCourtGroupDetailById(courtGroupId);
+        if (!user.getId().equals(courtGroup.getOwnerId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
     }
 }
 

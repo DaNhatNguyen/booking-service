@@ -44,6 +44,9 @@ public class Booking {
 
     String address;
 
+    @Column(name = "payment_proof")
+    String paymentProof;
+
     @Column(name = "created_at")
     LocalDateTime createdAt;
 }

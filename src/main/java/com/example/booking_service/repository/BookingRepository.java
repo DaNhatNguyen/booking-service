@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -52,4 +53,50 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("search") String search,
             @Param("ownerId") Long ownerId,
             Pageable pageable);
+
+    @Query("SELECT b FROM Booking b " +
+            "WHERE b.userId = :userId " +
+            "AND b.status = 'CONFIRMED' " +
+            "AND b.courtId IN (SELECT c.id FROM Court c WHERE c.courtGroupId = :courtGroupId) " +
+            "ORDER BY b.bookingDate DESC, b.createdAt DESC")
+    List<Booking> findConfirmedBookingsForUserAndCourtGroup(@Param("userId") Long userId,
+                                                            @Param("courtGroupId") Long courtGroupId);
+    
+    @Query("SELECT COUNT(b) FROM Booking b " +
+            "JOIN Court c ON b.courtId = c.id " +
+            "WHERE c.courtGroupId = :courtGroupId " +
+            "AND b.status IN ('PENDING', 'CONFIRMED') " +
+            "AND b.bookingDate >= CURRENT_DATE")
+    long countActiveBookingsByCourtGroupId(@Param("courtGroupId") Long courtGroupId);
+    
+    @Query("SELECT COUNT(b) FROM Booking b " +
+            "JOIN Court c ON b.courtId = c.id " +
+            "WHERE c.courtGroupId = :courtGroupId")
+    long countTotalBookingsByCourtGroupId(@Param("courtGroupId") Long courtGroupId);
+    
+    @Query("SELECT COALESCE(SUM(b.price), 0.0) FROM Booking b " +
+            "JOIN Court c ON b.courtId = c.id " +
+            "WHERE c.courtGroupId = :courtGroupId " +
+            "AND b.status IN ('CONFIRMED', 'COMPLETED')")
+    Double sumRevenueByCourtGroupId(@Param("courtGroupId") Long courtGroupId);
+    
+    // User management queries
+    @Query("SELECT COUNT(b) FROM Booking b " +
+            "WHERE b.userId = :userId " +
+            "AND b.status IN ('PENDING', 'CONFIRMED') " +
+            "AND b.bookingDate >= CURRENT_DATE")
+    long countActiveBookingsByUserId(@Param("userId") Long userId);
+    
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.userId = :userId")
+    long countTotalBookingsByUserId(@Param("userId") Long userId);
+    
+    @Query("SELECT COALESCE(SUM(b.price), 0.0) FROM Booking b " +
+            "WHERE b.userId = :userId " +
+            "AND b.status IN ('CONFIRMED', 'COMPLETED')")
+    Double sumTotalSpentByUserId(@Param("userId") Long userId);
+
+    // Payment related queries
+    @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.createdAt < :expiryTime")
+    List<Booking> findByStatusAndCreatedAtBefore(@Param("status") String status,
+                                                 @Param("expiryTime") LocalDateTime expiryTime);
 }

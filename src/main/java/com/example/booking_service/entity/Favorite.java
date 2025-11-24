@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
+@IdClass(FavoriteId.class)
 public class Favorite {
     @Id
     @Column(name = "user_id")
