@@ -1,6 +1,8 @@
 package com.example.booking_service.controllers;
 
 import com.example.booking_service.dto.request.ApiResponse;
+import com.example.booking_service.dto.request.ApproveOwnerRequest;
+import com.example.booking_service.dto.request.RejectOwnerRequest;
 import com.example.booking_service.dto.request.UpdateUserRequest;
 import com.example.booking_service.dto.request.UserCreationRequest;
 import com.example.booking_service.dto.response.UserAdminListResponse;
@@ -40,6 +42,7 @@ public class UserController {
     @GetMapping
     public ApiResponse<UserAdminListResponse> getUsers(
             @RequestParam(required = false) String role,
+            @RequestParam(required = false, name = "owner_status") String ownerStatus,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int limit) {
@@ -55,7 +58,7 @@ public class UserController {
         checkAdminRole();
 
         return ApiResponse.<UserAdminListResponse>builder()
-                .result(userService.getUsersAdmin(role, search, page, limit))
+                .result(userService.getUsersAdmin(role, ownerStatus, search, page, limit))
                 .build();
     }
 
@@ -84,15 +87,39 @@ public class UserController {
                 .build();
     }
 
+    @PatchMapping("/{userId}/approve-owner")
+    public ApiResponse<UserDetailResponse> approveOwner(
+            @PathVariable Long userId,
+            @RequestBody(required = false) ApproveOwnerRequest request) {
+        checkAdminRole();
+        var response = userService.approveOwner(userId, request != null ? request.getNote() : null);
+        return ApiResponse.<UserDetailResponse>builder()
+                .message("Owner approved successfully")
+                .result(response)
+                .build();
+    }
+
+    @PatchMapping("/{userId}/reject-owner")
+    public ApiResponse<UserDetailResponse> rejectOwner(
+            @PathVariable Long userId,
+            @RequestBody(required = false) RejectOwnerRequest request) {
+        checkAdminRole();
+        var response = userService.rejectOwner(userId, request != null ? request.getReason() : null);
+        return ApiResponse.<UserDetailResponse>builder()
+                .message("Owner rejected successfully")
+                .result(response)
+                .build();
+    }
+
     @DeleteMapping("/{userId}")
     public ApiResponse<String> deleteUser(@PathVariable Long userId) {
         // Check admin role
         checkAdminRole();
         
-        userService.deleteUserAdmin(userId);
+        String message = userService.deleteUserAdmin(userId);
         
         return ApiResponse.<String>builder()
-                .message("User deleted successfully")
+                .message(message)
                 .build();
     }
     

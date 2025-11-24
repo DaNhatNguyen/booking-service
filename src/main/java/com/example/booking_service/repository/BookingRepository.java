@@ -71,6 +71,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     
     @Query("SELECT COUNT(b) FROM Booking b " +
             "JOIN Court c ON b.courtId = c.id " +
+            "JOIN CourtGroup cg ON c.courtGroupId = cg.id " +
+            "WHERE cg.ownerId = :ownerId " +
+            "AND b.status IN ('PENDING', 'CONFIRMED') " +
+            "AND b.bookingDate >= CURRENT_DATE")
+    long countActiveBookingsByOwnerId(@Param("ownerId") Long ownerId);
+    
+    @Query("SELECT COUNT(b) FROM Booking b " +
+            "JOIN Court c ON b.courtId = c.id " +
             "WHERE c.courtGroupId = :courtGroupId")
     long countTotalBookingsByCourtGroupId(@Param("courtGroupId") Long courtGroupId);
     

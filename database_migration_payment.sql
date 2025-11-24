@@ -97,3 +97,4 @@ WHERE TABLE_SCHEMA = 'booking-service'
 -- ALTER TABLE `users` DROP COLUMN `bank_account_name`;
 
 
+

@@ -19,7 +19,15 @@ public enum ErrorCode {
     UNAUTHORIZED(1015, "Unauthorized access"),
     CANNOT_DELETE_USER(1016, "Cannot delete user with active bookings"),
     CANNOT_DELETE_ADMIN_OWNER(1017, "Cannot delete admin or owner users from this endpoint"),
-    USER_BANNED(1018, "User account has been banned")
+    USER_BANNED(1018, "User account has been banned"),
+
+    // Owner management specific error codes (aligned with API spec)
+    OWNER_UNAUTHORIZED(1001, "Unauthorized"),
+    OWNER_NOT_FOUND(1004, "Owner not found"),
+    OWNER_ALREADY_APPROVED(1005, "Owner is already approved or cannot be approved"),
+    OWNER_CANNOT_DELETE(1006, "Cannot delete owner with active court groups or bookings"),
+    OWNER_MISSING_DOCUMENTS(1007, "Missing required owner documents"),
+    OWNER_INVALID_STATUS(1008, "Invalid owner status for this action")
     ;
     private int code;
     private String message;

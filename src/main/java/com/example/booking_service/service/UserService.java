@@ -5,11 +5,13 @@ import com.example.booking_service.dto.request.UserCreationRequest;
 import com.example.booking_service.dto.request.UserUpdationRequest;
 import com.example.booking_service.dto.response.*;
 import com.example.booking_service.entity.User;
+import com.example.booking_service.enums.OwnerStatus;
 import com.example.booking_service.enums.Role;
 import com.example.booking_service.exception.AppException;
 import com.example.booking_service.exception.ErrorCode;
 import com.example.booking_service.mapper.UserMapper;
 import com.example.booking_service.repository.BookingRepository;
+import com.example.booking_service.repository.CourtGroupRepository;
 import com.example.booking_service.repository.FavoriteRepository;
 import com.example.booking_service.repository.ReviewRepository;
 import com.example.booking_service.repository.UserRepository;
@@ -26,7 +28,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +46,7 @@ public class UserService {
     BookingRepository bookingRepository;
     FavoriteRepository favoriteRepository;
     ReviewRepository reviewRepository;
+    CourtGroupRepository courtGroupRepository;
     
     static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 //    @Autowired
@@ -99,7 +104,7 @@ public class UserService {
     /**
      * Get users with filtering, search and pagination (Admin only)
      */
-    public UserAdminListResponse getUsersAdmin(String roleStr, String search, int page, int limit) {
+    public UserAdminListResponse getUsersAdmin(String roleStr, String ownerStatusStr, String search, int page, int limit) {
         Role role = null;
         if (roleStr != null && !roleStr.isBlank()) {
             try {
@@ -109,8 +114,17 @@ public class UserService {
             }
         }
         
+        OwnerStatus ownerStatus = null;
+        if (ownerStatusStr != null && !ownerStatusStr.isBlank()) {
+            try {
+                ownerStatus = OwnerStatus.valueOf(ownerStatusStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                // Invalid owner status, ignore
+            }
+        }
+        
         Pageable pageable = PageRequest.of(page - 1, limit);
-        Page<User> userPage = userRepository.findUsersWithFilters(role, search, pageable);
+        Page<User> userPage = userRepository.findUsersWithFilters(role, ownerStatus, search, pageable);
         
         List<UserListItemResponse> users = userPage.getContent()
                 .stream()
@@ -214,35 +228,89 @@ public class UserService {
         return toDetailResponse(updatedUser, statistics);
     }
 
+    /**
+     * Approve owner registration (Admin only)
+     */
+    @Transactional
+    public UserDetailResponse approveOwner(Long ownerId, String note) {
+        User owner = getOwnerOrThrow(ownerId);
+        
+        if (owner.getOwnerStatus() != OwnerStatus.PENDING) {
+            throw new AppException(ErrorCode.OWNER_ALREADY_APPROVED);
+        }
+        
+        validateOwnerDocuments(owner);
+        
+        owner.setOwnerStatus(OwnerStatus.APPROVED);
+        owner.setOwnerVerifiedAt(LocalDateTime.now());
+        User updatedOwner = userRepository.save(owner);
+        
+        log.info("Owner {} approved by admin. Note: {}", ownerId, note);
+        
+        return toDetailResponse(updatedOwner, getUserStatistics(ownerId));
+    }
+
+    /**
+     * Reject owner registration (Admin only)
+     */
+    @Transactional
+    public UserDetailResponse rejectOwner(Long ownerId, String reason) {
+        User owner = getOwnerOrThrow(ownerId);
+        
+        if (owner.getOwnerStatus() != OwnerStatus.PENDING) {
+            throw new AppException(ErrorCode.OWNER_INVALID_STATUS);
+        }
+        
+        owner.setOwnerStatus(OwnerStatus.REJECTED);
+        owner.setOwnerVerifiedAt(null);
+        User updatedOwner = userRepository.save(owner);
+        
+        log.info("Owner {} rejected by admin. Reason: {}", ownerId, reason);
+        
+        return toDetailResponse(updatedOwner, getUserStatistics(ownerId));
+    }
+
     public void deleteUser(String userId) {
         userRepository.deleteById(Long.parseLong(userId));
     }
     
     /**
-     * Delete user (Admin only)
-     * Business logic:
-     * - Only delete users with role = USER
-     * - Cannot delete if user has active bookings (PENDING or CONFIRMED)
+     * Delete user/owner (Admin only)
      */
     @Transactional
-    public void deleteUserAdmin(Long userId) {
+    public String deleteUserAdmin(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
         
-        // Check if user is USER role
-        if (user.getRole() != Role.USER) {
+        if (user.getRole() == Role.ADMIN) {
             throw new AppException(ErrorCode.CANNOT_DELETE_ADMIN_OWNER);
         }
         
-        // Check for active bookings
-        long activeBookings = bookingRepository.countActiveBookingsByUserId(userId);
-        if (activeBookings > 0) {
-            throw new AppException(ErrorCode.CANNOT_DELETE_USER);
+        if (user.getRole() == Role.USER) {
+            long activeBookings = bookingRepository.countActiveBookingsByUserId(userId);
+            if (activeBookings > 0) {
+                throw new AppException(ErrorCode.CANNOT_DELETE_USER);
+            }
+            
+            favoriteRepository.deleteByUserId(userId);
+            userRepository.delete(user);
+            return "User deleted successfully";
         }
         
-        // Delete user and related data
-        favoriteRepository.deleteByUserId(userId);
-        userRepository.delete(user);
+        if (user.getRole() == Role.OWNER) {
+            long approvedGroups = courtGroupRepository.countByOwnerIdAndStatus(userId, "approved");
+            long activeBookings = bookingRepository.countActiveBookingsByOwnerId(userId);
+            
+            if (approvedGroups > 0 || activeBookings > 0) {
+                throw new AppException(ErrorCode.OWNER_CANNOT_DELETE);
+            }
+            
+            favoriteRepository.deleteByUserId(userId);
+            userRepository.delete(user);
+            return "Owner deleted successfully";
+        }
+        
+        throw new AppException(ErrorCode.CANNOT_DELETE_ADMIN_OWNER);
     }
     
     // ========== Helper Methods ==========
@@ -290,6 +358,22 @@ public class UserService {
                 .build();
     }
     
+    private User getOwnerOrThrow(Long ownerId) {
+        return userRepository.findByIdAndRole(ownerId, Role.OWNER)
+                .orElseThrow(() -> new AppException(ErrorCode.OWNER_NOT_FOUND));
+    }
+    
+    private void validateOwnerDocuments(User owner) {
+        boolean hasDocuments = StringUtils.hasText(owner.getIdCardFront())
+                && StringUtils.hasText(owner.getIdCardBack())
+                && StringUtils.hasText(owner.getBankName())
+                && StringUtils.hasText(owner.getBankAccountNumber());
+        
+        if (!hasDocuments) {
+            throw new AppException(ErrorCode.OWNER_MISSING_DOCUMENTS);
+        }
+    }
+    
     /**
      * Convert User entity to UserListItemResponse
      */
@@ -301,13 +385,13 @@ public class UserService {
                 .phone(user.getPhone())
                 .avatar(user.getAvatar())
                 .role(user.getRole() != null ? user.getRole().name() : null)
-                .ownerStatus(null) // TODO: Implement if needed
-                .createdAt(user.getCreatedAt() != null ? user.getCreatedAt().format(DATE_TIME_FORMATTER) : null)
-                .updatedAt(user.getUpdatedAt() != null ? user.getUpdatedAt().format(DATE_TIME_FORMATTER) : null)
-                .idCardFront(null) // TODO: Implement if needed
-                .idCardBack(null) // TODO: Implement if needed
-                .businessLicense(null) // TODO: Implement if needed
-                .ownerVerifiedAt(null) // TODO: Implement if needed
+                .ownerStatus(user.getOwnerStatus() != null ? user.getOwnerStatus().name() : null)
+                .createdAt(formatDateTime(user.getCreatedAt()))
+                .updatedAt(formatDateTime(user.getUpdatedAt()))
+                .idCardFront(user.getIdCardFront())
+                .idCardBack(user.getIdCardBack())
+                .businessLicense(null)
+                .ownerVerifiedAt(formatDateTime(user.getOwnerVerifiedAt()))
                 .build();
     }
     
@@ -322,14 +406,22 @@ public class UserService {
                 .phone(user.getPhone())
                 .avatar(user.getAvatar())
                 .role(user.getRole() != null ? user.getRole().name() : null)
-                .ownerStatus(null) // TODO: Implement if needed
-                .createdAt(user.getCreatedAt() != null ? user.getCreatedAt().format(DATE_TIME_FORMATTER) : null)
-                .updatedAt(user.getUpdatedAt() != null ? user.getUpdatedAt().format(DATE_TIME_FORMATTER) : null)
-                .idCardFront(null) // TODO: Implement if needed
-                .idCardBack(null) // TODO: Implement if needed
-                .businessLicense(null) // TODO: Implement if needed
-                .ownerVerifiedAt(null) // TODO: Implement if needed
+                .ownerStatus(user.getOwnerStatus() != null ? user.getOwnerStatus().name() : null)
+                .createdAt(formatDateTime(user.getCreatedAt()))
+                .updatedAt(formatDateTime(user.getUpdatedAt()))
+                .idCardFront(user.getIdCardFront())
+                .idCardBack(user.getIdCardBack())
+                .businessLicense(null)
+                .ownerVerifiedAt(formatDateTime(user.getOwnerVerifiedAt()))
+                .bankQrImage(user.getBankQrImage())
+                .bankName(user.getBankName())
+                .bankAccountNumber(user.getBankAccountNumber())
+                .bankAccountName(user.getBankAccountName())
                 .statistics(statistics)
                 .build();
+    }
+    
+    private String formatDateTime(LocalDateTime dateTime) {
+        return dateTime != null ? dateTime.format(DATE_TIME_FORMATTER) : null;
     }
 }

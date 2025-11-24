@@ -40,8 +40,21 @@ public class UserDetailResponse {
     @JsonProperty("owner_verified_at")
     String ownerVerifiedAt;
     
+    @JsonProperty("bank_qr_image")
+    String bankQrImage;
+    
+    @JsonProperty("bank_name")
+    String bankName;
+    
+    @JsonProperty("bank_account_number")
+    String bankAccountNumber;
+    
+    @JsonProperty("bank_account_name")
+    String bankAccountName;
+    
     UserStatisticsResponse statistics;
 }
+
 
 
 
