@@ -21,6 +21,8 @@ public interface CourtGroupRepository extends JpaRepository<CourtGroup, Long> {
     
     List<CourtGroup> findByOwnerIdAndStatus(Long ownerId, String status);
     
+    long countByStatus(String status);
+    
     long countByOwnerIdAndStatus(Long ownerId, String status);
     
     @Query("SELECT cg FROM CourtGroup cg " +

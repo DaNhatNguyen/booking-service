@@ -1,6 +1,8 @@
 package com.example.booking_service.repository;
 
 import com.example.booking_service.entity.Booking;
+import com.example.booking_service.repository.projection.RecentBookingProjection;
+import com.example.booking_service.repository.projection.TopCourtGroupProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.time.LocalTime;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
@@ -88,6 +91,90 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "AND b.status IN ('CONFIRMED', 'COMPLETED')")
     Double sumRevenueByCourtGroupId(@Param("courtGroupId") Long courtGroupId);
     
+    @Query("SELECT COUNT(b) FROM Booking b WHERE b.bookingDate BETWEEN :startDate AND :endDate")
+    long countByBookingDateBetween(@Param("startDate") LocalDate startDate,
+                                   @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT COALESCE(SUM(b.price), 0) FROM Booking b " +
+            "WHERE b.bookingDate BETWEEN :startDate AND :endDate " +
+            "AND b.status IN ('PENDING', 'CONFIRMED')")
+    Double sumRevenueByBookingDateBetween(@Param("startDate") LocalDate startDate,
+                                          @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT b.bookingDate AS bookingDate, COUNT(b) AS total " +
+            "FROM Booking b WHERE b.bookingDate BETWEEN :startDate AND :endDate " +
+            "GROUP BY b.bookingDate ORDER BY b.bookingDate")
+    List<Object[]> countBookingsPerDay(@Param("startDate") LocalDate startDate,
+                                       @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT b.bookingDate AS bookingDate, COALESCE(SUM(b.price), 0) AS total " +
+            "FROM Booking b WHERE b.bookingDate BETWEEN :startDate AND :endDate " +
+            "AND b.status IN ('PENDING', 'CONFIRMED') " +
+            "GROUP BY b.bookingDate ORDER BY b.bookingDate")
+    List<Object[]> sumRevenuePerDay(@Param("startDate") LocalDate startDate,
+                                    @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT b.status AS status, COUNT(b) AS total " +
+            "FROM Booking b WHERE b.bookingDate BETWEEN :startDate AND :endDate " +
+            "GROUP BY b.status")
+    List<Object[]> countBookingsByStatus(@Param("startDate") LocalDate startDate,
+                                         @Param("endDate") LocalDate endDate);
+    
+    @Query("""
+            SELECT cg.id AS courtGroupId,
+                   cg.name AS courtGroupName,
+                   CONCAT(cg.address, ', ', cg.district, ', ', cg.province) AS address,
+                   cg.district AS district,
+                   cg.type AS type,
+                   cg.rating AS rating,
+                   COUNT(b.id) AS bookings,
+                   COALESCE(SUM(b.price), 0) AS revenue
+            FROM Booking b
+            JOIN Court c ON b.courtId = c.id
+            JOIN CourtGroup cg ON c.courtGroupId = cg.id
+            WHERE b.bookingDate BETWEEN :startDate AND :endDate
+            GROUP BY cg.id, cg.name, cg.address, cg.district, cg.province, cg.type, cg.rating
+            ORDER BY revenue DESC
+            """)
+    Page<TopCourtGroupProjection> findTopCourtGroups(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            Pageable pageable);
+    
+    @Query("""
+            SELECT b.id AS bookingId,
+                   u.fullName AS userName,
+                   cg.name AS courtGroupName,
+                   c.name AS courtName,
+                   b.bookingDate AS bookingDate,
+                   b.startTime AS startTime,
+                   b.endTime AS endTime,
+                   b.status AS status,
+                   b.price AS price
+            FROM Booking b
+            JOIN User u ON b.userId = u.id
+            JOIN Court c ON b.courtId = c.id
+            JOIN CourtGroup cg ON c.courtGroupId = cg.id
+            ORDER BY b.createdAt DESC
+            """)
+    Page<RecentBookingProjection> findRecentBookings(Pageable pageable);
+    
+    @Query("""
+            SELECT COALESCE(b.timeSlotId,
+                       CASE 
+                           WHEN b.startTime IS NOT NULL AND b.startTime < :eveningStart THEN 1
+                           WHEN b.startTime IS NOT NULL THEN 2
+                           ELSE 1
+                       END) AS slotId,
+                   COUNT(b.id) AS total
+            FROM Booking b
+            WHERE b.bookingDate BETWEEN :startDate AND :endDate
+            GROUP BY slotId
+            """)
+    List<Object[]> countUtilizationByTimeSlot(@Param("startDate") LocalDate startDate,
+                                              @Param("endDate") LocalDate endDate,
+                                              @Param("eveningStart") LocalTime eveningStart);
+    
     // User management queries
     @Query("SELECT COUNT(b) FROM Booking b " +
             "WHERE b.userId = :userId " +
@@ -107,4 +194,37 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b WHERE b.status = :status AND b.createdAt < :expiryTime")
     List<Booking> findByStatusAndCreatedAtBefore(@Param("status") String status,
                                                  @Param("expiryTime") LocalDateTime expiryTime);
+    
+    // Owner dashboard queries
+    @Query("SELECT b FROM Booking b WHERE b.courtId IN :courtIds " +
+            "AND b.bookingDate BETWEEN :startDate AND :endDate")
+    List<Booking> findByCourtIdInAndBookingDateBetween(
+            @Param("courtIds") List<Long> courtIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+    
+    @Query("SELECT b FROM Booking b WHERE b.courtId IN :courtIds " +
+            "AND b.bookingDate = :date")
+    List<Booking> findByCourtIdInAndBookingDate(
+            @Param("courtIds") List<Long> courtIds,
+            @Param("date") LocalDate date);
+    
+    @Query("SELECT b FROM Booking b WHERE b.courtId IN :courtIds " +
+            "ORDER BY b.createdAt DESC")
+    Page<Booking> findByCourtIdInOrderByCreatedAtDesc(
+            @Param("courtIds") List<Long> courtIds,
+            Pageable pageable);
+    
+    @Query("SELECT b FROM Booking b WHERE b.courtId IN :courtIds " +
+            "AND b.bookingDate BETWEEN :startDate AND :endDate " +
+            "AND (b.timeSlotId = :timeSlotId OR " +
+            "(b.timeSlotId IS NULL AND b.startTime IS NOT NULL AND " +
+            "((:timeSlotId = 1 AND b.startTime < :eveningStart) OR " +
+            "(:timeSlotId = 2 AND b.startTime >= :eveningStart))))")
+    List<Booking> findByCourtIdInAndBookingDateBetweenAndTimeSlotId(
+            @Param("courtIds") List<Long> courtIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("timeSlotId") Long timeSlotId,
+            @Param("eveningStart") LocalTime eveningStart);
 }

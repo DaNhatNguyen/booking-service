@@ -21,6 +21,10 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     
     Optional<User> findByIdAndRole(Long id, Role role);
     
+    long countByRole(Role role);
+    
+    long countByRoleAndOwnerStatus(Role role, OwnerStatus ownerStatus);
+    
     @Query("SELECT u FROM User u " +
             "WHERE (:role IS NULL OR u.role = :role) " +
             "AND (:ownerStatus IS NULL OR u.ownerStatus = :ownerStatus) " +
