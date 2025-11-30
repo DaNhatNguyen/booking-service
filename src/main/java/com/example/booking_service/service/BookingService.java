@@ -51,15 +51,16 @@ public class BookingService {
             String status,
             LocalDate bookingDate,
             String search,
-            Long ownerId) {
+            Long ownerId,
+            Long courtGroupId) {
         
         try {
             // Set defaults
             int pageNumber = (page != null && page > 0) ? page - 1 : 0; // Convert to 0-based index
             int pageSize = (limit != null && limit > 0) ? limit : 10;
             
-            log.info("Fetching bookings: page={}, limit={}, status={}, bookingDate={}, search={}, ownerId={}", 
-                    page, limit, status, bookingDate, search, ownerId);
+            log.info("Fetching bookings: page={}, limit={}, status={}, bookingDate={}, search={}, ownerId={}, courtGroupId={}", 
+                    page, limit, status, bookingDate, search, ownerId, courtGroupId);
             
             Pageable pageable = PageRequest.of(pageNumber, pageSize);
             
@@ -68,6 +69,7 @@ public class BookingService {
                     bookingDate,
                     search,
                     ownerId,
+                    courtGroupId,
                     pageable
             );
             
@@ -201,6 +203,7 @@ public class BookingService {
                 .price(booking.getPrice())
                 .createdAt(booking.getCreatedAt() != null ? booking.getCreatedAt().format(DATETIME_FORMATTER) : null)
                 .address(booking.getAddress())
+                .paymentProof(booking.getPaymentProof())
                 .build();
     }
 

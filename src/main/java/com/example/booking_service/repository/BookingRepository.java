@@ -40,6 +40,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "AND (:bookingDate IS NULL OR b.booking_date = :bookingDate) " +
             "AND (:search IS NULL OR u.full_name LIKE %:search% OR u.email LIKE %:search% OR u.phone LIKE %:search%) " +
             "AND (:ownerId IS NULL OR cg.owner_id = :ownerId) " +
+            "AND (:courtGroupId IS NULL OR cg.id = :courtGroupId) " +
             "ORDER BY b.created_at DESC",
             countQuery = "SELECT COUNT(*) FROM bookings b " +
             "JOIN users u ON b.user_id = u.id " +
@@ -48,13 +49,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "WHERE (:status IS NULL OR b.status = :status) " +
             "AND (:bookingDate IS NULL OR b.booking_date = :bookingDate) " +
             "AND (:search IS NULL OR u.full_name LIKE %:search% OR u.email LIKE %:search% OR u.phone LIKE %:search%) " +
-            "AND (:ownerId IS NULL OR cg.owner_id = :ownerId)",
+            "AND (:ownerId IS NULL OR cg.owner_id = :ownerId) " +
+            "AND (:courtGroupId IS NULL OR cg.id = :courtGroupId)",
             nativeQuery = true)
     Page<Booking> findBookingsWithFilters(
             @Param("status") String status,
             @Param("bookingDate") LocalDate bookingDate,
             @Param("search") String search,
             @Param("ownerId") Long ownerId,
+            @Param("courtGroupId") Long courtGroupId,
             Pageable pageable);
 
     @Query("SELECT b FROM Booking b " +

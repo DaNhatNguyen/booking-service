@@ -59,6 +59,9 @@ public class BookingDetailResponse {
     String createdAt;
     
     String address;
+    
+    @JsonProperty("payment_proof")
+    String paymentProof;
 }
 
 

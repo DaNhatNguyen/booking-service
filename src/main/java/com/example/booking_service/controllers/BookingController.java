@@ -30,10 +30,11 @@ public class BookingController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate booking_date,
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) Long owner_id) {
+            @RequestParam(required = false) Long owner_id,
+            @RequestParam(required = false) Long court_group_id) {
         
         BookingListResponse response = bookingService.getBookings(
-                page, limit, status, booking_date, search, owner_id);
+                page, limit, status, booking_date, search, owner_id, court_group_id);
         
         return ApiResponse.<BookingListResponse>builder()
                 .message("Success")

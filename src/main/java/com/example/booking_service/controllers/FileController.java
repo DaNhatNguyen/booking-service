@@ -60,6 +60,43 @@ public class FileController {
     }
     
     /**
+     * Serve payment proof images
+     * GET /files/payment-proofs/{filename}
+     */
+    @GetMapping("/payment-proofs/{fileName:.+}")
+    public ResponseEntity<Resource> getPaymentProofImage(@PathVariable String fileName) {
+        try {
+            Path filePath = fileStorageService.getFileStorageLocation().resolve(fileName).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+
+            if (resource.exists() && resource.isReadable()) {
+                String contentType = "image/jpeg"; // Default to JPEG
+                
+                // Determine content type based on file extension
+                String lowerFileName = fileName.toLowerCase();
+                if (lowerFileName.endsWith(".jpg") || lowerFileName.endsWith(".jpeg")) {
+                    contentType = "image/jpeg";
+                } else if (lowerFileName.endsWith(".png")) {
+                    contentType = "image/png";
+                } else if (lowerFileName.endsWith(".gif")) {
+                    contentType = "image/gif";
+                } else if (lowerFileName.endsWith(".webp")) {
+                    contentType = "image/webp";
+                }
+
+                return ResponseEntity.ok()
+                        .contentType(MediaType.parseMediaType(contentType))
+                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
+                        .body(resource);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception ex) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+    
+    /**
      * Upload single image
      * Returns full URL instead of just filename
      */
