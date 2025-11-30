@@ -52,6 +52,9 @@ public class CourtGroup {
     @Column(name = "created_at")
     LocalDateTime createdAt;
 
+    @Column(name = "is_deleted")
+    Boolean isDeleted;
+
 }
 
 

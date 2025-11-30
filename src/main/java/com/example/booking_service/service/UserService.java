@@ -29,6 +29,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -47,6 +48,7 @@ public class UserService {
     FavoriteRepository favoriteRepository;
     ReviewRepository reviewRepository;
     CourtGroupRepository courtGroupRepository;
+    FileStorageService fileStorageService;
     
     static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 //    @Autowired
@@ -226,6 +228,45 @@ public class UserService {
         UserStatisticsResponse statistics = getUserStatistics(id);
         
         return toDetailResponse(updatedUser, statistics);
+    }
+    
+    /**
+     * Update user profile (with optional avatar upload)
+     */
+    @Transactional
+    public UserResponse updateProfile(Long userId, String fullName, String phone, MultipartFile avatarFile) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        
+        // Update fullName
+        if (fullName != null && !fullName.trim().isEmpty()) {
+            user.setFullName(fullName.trim());
+        }
+        
+        // Update phone
+        if (phone != null) {
+            user.setPhone(phone.trim());
+        }
+        
+        // Handle avatar upload
+        if (avatarFile != null && !avatarFile.isEmpty()) {
+            // Delete old avatar if exists
+            if (user.getAvatar() != null && !user.getAvatar().isEmpty()) {
+                try {
+                    fileStorageService.deleteFile(user.getAvatar());
+                } catch (Exception e) {
+                    log.warn("Failed to delete old avatar file: {}", user.getAvatar(), e);
+                }
+            }
+            
+            // Save new avatar
+            String fileName = fileStorageService.storeFile(avatarFile);
+            user.setAvatar(fileName);
+        }
+        
+        User updatedUser = userRepository.save(user);
+        
+        return userMapper.toUserResponse(updatedUser);
     }
 
     /**

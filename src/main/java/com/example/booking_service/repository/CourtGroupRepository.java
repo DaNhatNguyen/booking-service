@@ -13,13 +13,29 @@ import java.util.List;
 @Repository
 public interface CourtGroupRepository extends JpaRepository<CourtGroup, Long> {
 
-    List<CourtGroup> findByProvinceAndDistrict(String province, String district);
+    @Query("SELECT cg FROM CourtGroup cg " +
+            "WHERE cg.province = :province AND cg.district = :district " +
+            "AND cg.status = 'approved' AND (cg.isDeleted = false OR cg.isDeleted IS NULL)")
+    List<CourtGroup> findByProvinceAndDistrict(@Param("province") String province, 
+                                                @Param("district") String district);
     
-    List<CourtGroup> findByTypeAndProvinceAndDistrict(String type, String province, String district);
+    @Query("SELECT cg FROM CourtGroup cg " +
+            "WHERE cg.type = :type AND cg.province = :province AND cg.district = :district " +
+            "AND (cg.isDeleted = false OR cg.isDeleted IS NULL)")
+    List<CourtGroup> findByTypeAndProvinceAndDistrict(@Param("type") String type, 
+                                                        @Param("province") String province, 
+                                                        @Param("district") String district);
     
-    List<CourtGroup> findByOwnerId(Long ownerId);
+    @Query("SELECT cg FROM CourtGroup cg " +
+            "WHERE cg.ownerId = :ownerId " +
+            "AND (cg.isDeleted = false OR cg.isDeleted IS NULL)")
+    List<CourtGroup> findByOwnerId(@Param("ownerId") Long ownerId);
     
-    List<CourtGroup> findByOwnerIdAndStatus(Long ownerId, String status);
+    @Query("SELECT cg FROM CourtGroup cg " +
+            "WHERE cg.ownerId = :ownerId AND cg.status = :status " +
+            "AND (cg.isDeleted = false OR cg.isDeleted IS NULL)")
+    List<CourtGroup> findByOwnerIdAndStatus(@Param("ownerId") Long ownerId, 
+                                             @Param("status") String status);
     
     long countByStatus(String status);
     
@@ -27,8 +43,16 @@ public interface CourtGroupRepository extends JpaRepository<CourtGroup, Long> {
     
     @Query("SELECT cg FROM CourtGroup cg " +
             "WHERE (:status IS NULL OR cg.status = :status) " +
+            "AND (cg.isDeleted = false OR cg.isDeleted IS NULL) " +
             "ORDER BY cg.createdAt DESC")
     Page<CourtGroup> findAllWithFilters(@Param("status") String status, Pageable pageable);
+    
+    @Query("SELECT cg FROM CourtGroup cg " +
+            "WHERE (cg.isDeleted = false OR cg.isDeleted IS NULL) " +
+            "AND (cg.status = 'approved' OR cg.status IS NULL) " +
+            "AND cg.rating > 0 " +
+            "ORDER BY cg.rating DESC")
+    Page<CourtGroup> findTopRatedCourtGroups(Pageable pageable);
 }
 
 

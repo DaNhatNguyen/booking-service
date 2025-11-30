@@ -49,6 +49,11 @@ public class CourtGroupService {
         CourtGroup courtGroup = courtGroupRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
         
+        // Check if soft deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
+        
         return toResponse(courtGroup);
     }
 
@@ -69,6 +74,20 @@ public class CourtGroupService {
         }
         
         return courtGroups.stream()
+                .map(this::toResponse)
+                .toList();
+    }
+    
+    /**
+     * Get top rated court groups
+     * Filters: isDeleted = false, status = 'approved' or NULL, rating > 0
+     * Order by: rating DESC
+     */
+    public List<CourtGroupResponse> getTopRatedCourtGroups(int limit) {
+        Pageable pageable = PageRequest.of(0, limit);
+        Page<CourtGroup> courtGroupPage = courtGroupRepository.findTopRatedCourtGroups(pageable);
+        
+        return courtGroupPage.getContent().stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -99,7 +118,9 @@ public class CourtGroupService {
                 .image(imageUrls)
                 .openTime(openTime)
                 .closeTime(closeTime)
-                .rating(0.0)
+                .rating(5.0)
+                .status("pending")
+                .isDeleted(false)
                 .createdAt(LocalDateTime.now())
                 .build();
         
@@ -193,6 +214,11 @@ public class CourtGroupService {
         CourtGroup courtGroup = courtGroupRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
         
+        // Check if soft deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
+        
         return toDetailResponse(courtGroup);
     }
     
@@ -203,6 +229,11 @@ public class CourtGroupService {
     public CourtGroupListResponse approveCourtGroup(Long id) {
         CourtGroup courtGroup = courtGroupRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        // Check if soft deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
         
         if ("approved".equals(courtGroup.getStatus())) {
             throw new AppException(ErrorCode.COURT_GROUP_ALREADY_APPROVED);
@@ -222,6 +253,11 @@ public class CourtGroupService {
         CourtGroup courtGroup = courtGroupRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
         
+        // Check if soft deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
+        
         courtGroup.setStatus("rejected");
         CourtGroup updatedCourtGroup = courtGroupRepository.save(courtGroup);
         
@@ -229,12 +265,17 @@ public class CourtGroupService {
     }
     
     /**
-     * Delete a court group (only if no active bookings)
+     * Soft delete a court group (only if no active bookings)
      */
     @Transactional
     public void deleteCourtGroup(Long id) {
         CourtGroup courtGroup = courtGroupRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        // Check if already deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
         
         // Check for active bookings
         long activeBookings = bookingRepository.countActiveBookingsByCourtGroupId(id);
@@ -243,8 +284,38 @@ public class CourtGroupService {
             throw new AppException(ErrorCode.CANNOT_DELETE_COURT_GROUP);
         }
         
-        // Delete court group (CASCADE will handle related records)
-        courtGroupRepository.delete(courtGroup);
+        // Soft delete: set isDeleted = true
+        courtGroup.setIsDeleted(true);
+        courtGroupRepository.save(courtGroup);
+    }
+    
+    /**
+     * Soft delete a court group via PATCH endpoint
+     * Sets is_deleted = 1 based on request body
+     */
+    @Transactional
+    public SoftDeleteCourtGroupResponse softDeleteCourtGroup(Long id, Integer isDeleted) {
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        // Validate is_deleted value (should be 1 for delete)
+        if (isDeleted == null || isDeleted != 1) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        
+        // Check if already deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
+        
+        // Soft delete: set isDeleted = true (1)
+        courtGroup.setIsDeleted(true);
+        courtGroupRepository.save(courtGroup);
+        
+        return SoftDeleteCourtGroupResponse.builder()
+                .id(courtGroup.getId().toString())
+                .isDeleted(1)
+                .build();
     }
     
     // ========== Helper Methods ==========

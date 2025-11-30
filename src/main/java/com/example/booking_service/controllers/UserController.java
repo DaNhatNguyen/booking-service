@@ -19,9 +19,11 @@ import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @RestController
@@ -74,6 +76,65 @@ public class UserController {
     public ApiResponse<UserResponse> getMyInfo() {
         return ApiResponse.<UserResponse>builder()
                 .result(userService.getMyInfo())
+                .build();
+    }
+    
+    /**
+     * Update user profile (JSON only, no file upload)
+     * PUT /users/profile
+     * Content-Type: application/json
+     */
+    @PutMapping(value = "/profile", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ApiResponse<UserResponse> updateProfileJson(
+            @RequestBody(required = false) UpdateUserRequest request) {
+        
+        // Get current user
+        User currentUser = getCurrentUser();
+        
+        if (request == null) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        
+        // Validate fullName if provided
+        String fullName = request.getFullName();
+        if (fullName != null && fullName.trim().isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        
+        UserResponse updatedUser = userService.updateProfile(
+                currentUser.getId(), fullName, request.getPhone(), null);
+        
+        return ApiResponse.<UserResponse>builder()
+                .message("Cập nhật thông tin thành công")
+                .result(updatedUser)
+                .build();
+    }
+    
+    /**
+     * Update user profile with optional avatar upload
+     * PUT /users/profile
+     * Content-Type: multipart/form-data
+     */
+    @PutMapping(value = "/profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<UserResponse> updateProfileMultipart(
+            @RequestParam(value = "fullName", required = false) String fullName,
+            @RequestParam(value = "phone", required = false) String phone,
+            @RequestParam(value = "avatar", required = false) MultipartFile avatarFile) {
+        
+        // Get current user
+        User currentUser = getCurrentUser();
+        
+        // Validate fullName if provided
+        if (fullName != null && fullName.trim().isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        
+        UserResponse updatedUser = userService.updateProfile(
+                currentUser.getId(), fullName, phone, avatarFile);
+        
+        return ApiResponse.<UserResponse>builder()
+                .message("Cập nhật thông tin thành công")
+                .result(updatedUser)
                 .build();
     }
 
@@ -142,5 +203,20 @@ public class UserController {
         if (user.getRole() != Role.ADMIN) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+    }
+    
+    /**
+     * Get current authenticated user
+     */
+    private User getCurrentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        
+        String email = authentication.getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
     }
 }

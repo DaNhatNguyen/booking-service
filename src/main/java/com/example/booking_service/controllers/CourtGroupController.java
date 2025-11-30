@@ -3,6 +3,7 @@ package com.example.booking_service.controllers;
 import com.example.booking_service.dto.request.ApiResponse;
 import com.example.booking_service.dto.request.CreateCourtGroupRequest;
 import com.example.booking_service.dto.request.RejectCourtGroupRequest;
+import com.example.booking_service.dto.request.SoftDeleteCourtGroupRequest;
 import com.example.booking_service.dto.response.*;
 import com.example.booking_service.entity.User;
 import com.example.booking_service.enums.Role;
@@ -43,6 +44,22 @@ public class CourtGroupController {
     public ApiResponse<CourtGroupDetailResponse> getCourtGroupById(@PathVariable Long id) {
         return ApiResponse.<CourtGroupDetailResponse>builder()
                 .result(courtGroupService.getCourtGroupDetailById(id))
+                .build();
+    }
+    
+    /**
+     * Get top rated court groups
+     * Query params: limit (default: 4, max: 4)
+     */
+    @GetMapping("/top-rated")
+    public ApiResponse<List<CourtGroupResponse>> getTopRatedCourtGroups(
+            @RequestParam(defaultValue = "4") int limit) {
+        
+        // Limit maximum to 4
+        int actualLimit = Math.min(limit, 4);
+        
+        return ApiResponse.<List<CourtGroupResponse>>builder()
+                .result(courtGroupService.getTopRatedCourtGroups(actualLimit))
                 .build();
     }
     
@@ -109,6 +126,28 @@ public class CourtGroupController {
         
         return ApiResponse.<String>builder()
                 .message("Court group deleted successfully")
+                .build();
+    }
+    
+    /**
+     * Soft delete a court group (Admin or Owner)
+     * PATCH /court-groups/:id/soft-delete
+     */
+    @PatchMapping("/{id}/soft-delete")
+    public ApiResponse<SoftDeleteCourtGroupResponse> softDeleteCourtGroup(
+            @PathVariable Long id,
+            @RequestBody SoftDeleteCourtGroupRequest request) {
+        
+        // Check if user is admin or owner of the court group
+        checkDeletePermission(id);
+        
+        SoftDeleteCourtGroupResponse result = 
+                courtGroupService.softDeleteCourtGroup(id, request.getIsDeleted());
+        
+        return ApiResponse.<SoftDeleteCourtGroupResponse>builder()
+                .code(1000)
+                .result(result)
+                .message("Đã xóa cụm sân thành công")
                 .build();
     }
 

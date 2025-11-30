@@ -5,7 +5,9 @@ import com.example.booking_service.dto.response.AuthenticationResponse;
 import com.example.booking_service.dto.response.IntrospectResponse;
 import com.example.booking_service.dto.response.RegisterOwnerResponse;
 import com.example.booking_service.dto.response.RegisterResponse;
+import com.example.booking_service.dto.response.UserResponse;
 import com.example.booking_service.service.AuthenticationService;
+import com.example.booking_service.service.UserService;
 import com.nimbusds.jose.JOSEException;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -24,6 +26,7 @@ import java.text.ParseException;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class AuthenticationController {
     AuthenticationService authenticationService;
+    UserService userService;
 
     @PostMapping("/login")
     AuthenticationResponse login(@RequestBody AuthenticationRequest request) {
@@ -108,6 +111,17 @@ public class AuthenticationController {
                         .message(result.getMessage())
                         .result(result)
                         .build());
+    }
+    
+    /**
+     * Get current user information
+     * GET /api/auth/myInfo
+     */
+    @GetMapping("/myInfo")
+    public ApiResponse<UserResponse> getMyInfo() {
+        return ApiResponse.<UserResponse>builder()
+                .result(userService.getMyInfo())
+                .build();
     }
 
 }
