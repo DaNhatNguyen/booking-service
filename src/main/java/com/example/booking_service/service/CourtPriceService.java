@@ -1,9 +1,12 @@
 package com.example.booking_service.service;
 
 import com.example.booking_service.dto.request.CreateCourtPriceRequest;
+import com.example.booking_service.dto.response.CourtPriceDTO;
 import com.example.booking_service.dto.response.CourtPriceResponse;
 import com.example.booking_service.entity.CourtPrice;
+import com.example.booking_service.entity.TimeSlot;
 import com.example.booking_service.repository.CourtPriceRepository;
+import com.example.booking_service.repository.TimeSlotRepository;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -12,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -21,8 +25,10 @@ import java.util.List;
 public class CourtPriceService {
 
     static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     CourtPriceRepository courtPriceRepository;
+    TimeSlotRepository timeSlotRepository;
 
     public List<CourtPriceResponse> getCourtPricesByCourtGroupId(Long courtGroupId) {
         try {
@@ -101,6 +107,47 @@ public class CourtPriceService {
             log.error("Error creating or updating court price", e);
             throw e;
         }
+    }
+    
+    /**
+     * Get court prices with time slot information
+     * Returns prices with startTime and endTime from TimeSlot
+     */
+    public List<CourtPriceDTO> getCourtPricesWithTimeSlots(Long courtGroupId) {
+        try {
+            log.info("Getting court prices with time slots for court group ID: {}", courtGroupId);
+            List<CourtPrice> courtPrices = courtPriceRepository.findByCourtGroupId(courtGroupId);
+            log.info("Found {} court prices", courtPrices.size());
+            
+            return courtPrices.stream()
+                    .map(cp -> {
+                        TimeSlot timeSlot = timeSlotRepository.findById(cp.getTimeSlotId())
+                                .orElse(null);
+                        
+                        return CourtPriceDTO.builder()
+                                .id(cp.getId())
+                                .timeSlotId(cp.getTimeSlotId())
+                                .startTime(timeSlot != null ? formatTime(timeSlot.getStartTime()) : null)
+                                .endTime(timeSlot != null ? formatTime(timeSlot.getEndTime()) : null)
+                                .dayType(cp.getDayType())
+                                .price(cp.getPrice())
+                                .build();
+                    })
+                    .sorted(Comparator
+                            .comparing((CourtPriceDTO dto) -> dto.getDayType() != null ? dto.getDayType() : "")
+                            .thenComparing(dto -> dto.getStartTime() != null ? dto.getStartTime() : ""))
+                    .toList();
+        } catch (Exception e) {
+            log.error("Error getting court prices with time slots for court group ID: {}", courtGroupId, e);
+            throw e;
+        }
+    }
+    
+    private String formatTime(java.time.LocalTime time) {
+        if (time == null) {
+            return null;
+        }
+        return time.format(TIME_FORMATTER);
     }
 }
 

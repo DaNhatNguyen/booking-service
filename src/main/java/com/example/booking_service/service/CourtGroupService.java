@@ -9,6 +9,7 @@ import com.example.booking_service.repository.*;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
@@ -316,6 +318,142 @@ public class CourtGroupService {
                 .id(courtGroup.getId().toString())
                 .isDeleted(1)
                 .build();
+    }
+    
+    /**
+     * Update court group information with image handling
+     * Supports keeping existing images and uploading new ones
+     */
+    @Transactional
+    public CourtGroupResponse updateCourtGroup(
+            Long id,
+            Long ownerId,
+            String fieldName,
+            String fieldType,
+            String address,
+            String district,
+            String province,
+            String phone,
+            String openTime,
+            String closeTime,
+            Integer courtNumber,
+            String description,
+            List<MultipartFile> newImages,
+            String existingImages) {
+        
+        // Find court group and check ownership
+        CourtGroup courtGroup = courtGroupRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED));
+        
+        // Check if soft deleted
+        if (Boolean.TRUE.equals(courtGroup.getIsDeleted())) {
+            throw new AppException(ErrorCode.COURT_GROUP_NOT_EXISTED);
+        }
+        
+        // Check ownership
+        if (!courtGroup.getOwnerId().equals(ownerId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        
+        // Parse times
+        LocalTime parsedOpenTime = LocalTime.parse(openTime, TIME_FORMATTER);
+        LocalTime parsedCloseTime = LocalTime.parse(closeTime, TIME_FORMATTER);
+        
+        // Process images
+        List<String> finalImageList = new ArrayList<>();
+        boolean hasExistingImages = existingImages != null && !existingImages.trim().isEmpty();
+        boolean hasNewImages = newImages != null && !newImages.isEmpty();
+        
+        // If no existing_images and no new images, keep current images
+        if (!hasExistingImages && !hasNewImages) {
+            // Keep all current images
+            if (courtGroup.getImage() != null && !courtGroup.getImage().isEmpty()) {
+                finalImageList = parseImages(courtGroup.getImage());
+            }
+        } else {
+            // Add existing images (if provided)
+            if (hasExistingImages) {
+                List<String> existingImageList = parseImages(existingImages);
+                // Verify existing images exist in current court group
+                List<String> currentImages = parseImages(courtGroup.getImage());
+                for (String existingImg : existingImageList) {
+                    if (currentImages.contains(existingImg.trim())) {
+                        finalImageList.add(existingImg.trim());
+                    }
+                }
+            }
+            
+            // Upload and add new images
+            if (hasNewImages) {
+                List<String> uploadedFileNames = fileStorageService.storeFiles(newImages);
+                finalImageList.addAll(uploadedFileNames);
+            }
+            
+            // Delete old images that are no longer used
+            if (courtGroup.getImage() != null && !courtGroup.getImage().isEmpty()) {
+                List<String> currentImageList = parseImages(courtGroup.getImage());
+                for (String oldImage : currentImageList) {
+                    if (!finalImageList.contains(oldImage)) {
+                        // Delete file from storage
+                        try {
+                            fileStorageService.deleteFile(oldImage);
+                        } catch (Exception e) {
+                            log.warn("Failed to delete old image file: {}", oldImage, e);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Build final image string
+        String finalImageString = finalImageList.isEmpty() 
+                ? "" 
+                : String.join(",", finalImageList);
+        
+        // Update court group fields
+        courtGroup.setName(fieldName);
+        courtGroup.setType(fieldType);
+        courtGroup.setAddress(address);
+        courtGroup.setDistrict(district);
+        courtGroup.setProvince(province);
+        courtGroup.setPhoneNumber(phone);
+        courtGroup.setOpenTime(parsedOpenTime);
+        courtGroup.setCloseTime(parsedCloseTime);
+        courtGroup.setDescription(description);
+        courtGroup.setImage(finalImageString);
+        // Note: rating, status, created_at, is_deleted are NOT updated
+        
+        // Update court number if changed
+        if (courtNumber != null && courtNumber > 0) {
+            List<Court> existingCourts = courtRepository.findByCourtGroupId(id);
+            int currentCourtCount = existingCourts.size();
+            
+            if (courtNumber > currentCourtCount) {
+                // Add new courts
+                List<Court> newCourts = new ArrayList<>();
+                for (int i = currentCourtCount + 1; i <= courtNumber; i++) {
+                    Court court = Court.builder()
+                            .courtGroupId(id)
+                            .name("Sân " + i)
+                            .isActive(1)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    newCourts.add(court);
+                }
+                courtRepository.saveAll(newCourts);
+            } else if (courtNumber < currentCourtCount) {
+                // Remove excess courts (soft delete by setting isActive = 0)
+                for (int i = courtNumber; i < currentCourtCount; i++) {
+                    Court court = existingCourts.get(i);
+                    court.setIsActive(0);
+                    courtRepository.save(court);
+                }
+            }
+        }
+        
+        CourtGroup updatedCourtGroup = courtGroupRepository.save(courtGroup);
+        
+        return toResponse(updatedCourtGroup);
     }
     
     // ========== Helper Methods ==========

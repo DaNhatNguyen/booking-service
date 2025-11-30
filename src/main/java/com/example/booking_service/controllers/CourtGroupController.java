@@ -5,6 +5,7 @@ import com.example.booking_service.dto.request.CreateCourtGroupRequest;
 import com.example.booking_service.dto.request.RejectCourtGroupRequest;
 import com.example.booking_service.dto.request.SoftDeleteCourtGroupRequest;
 import com.example.booking_service.dto.response.*;
+import com.example.booking_service.dto.response.CourtPriceDTO;
 import com.example.booking_service.entity.User;
 import com.example.booking_service.enums.Role;
 import com.example.booking_service.exception.AppException;
@@ -12,6 +13,7 @@ import com.example.booking_service.exception.ErrorCode;
 import com.example.booking_service.repository.UserRepository;
 // import com.example.booking_service.service.CourtAvailabilityService;
 import com.example.booking_service.service.CourtGroupService;
+import com.example.booking_service.service.CourtPriceService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -30,6 +32,7 @@ import java.util.List;
 public class CourtGroupController {
 
     CourtGroupService courtGroupService;
+    CourtPriceService courtPriceService;
     UserRepository userRepository;
 
     @GetMapping
@@ -44,6 +47,18 @@ public class CourtGroupController {
     public ApiResponse<CourtGroupDetailResponse> getCourtGroupById(@PathVariable Long id) {
         return ApiResponse.<CourtGroupDetailResponse>builder()
                 .result(courtGroupService.getCourtGroupDetailById(id))
+                .build();
+    }
+    
+    /**
+     * Get court prices with time slots for a court group
+     * GET /court-groups/{courtGroupId}/prices
+     */
+    @GetMapping("/{courtGroupId}/prices")
+    public ApiResponse<List<CourtPriceDTO>> getCourtPrices(@PathVariable Long courtGroupId) {
+        List<CourtPriceDTO> prices = courtPriceService.getCourtPricesWithTimeSlots(courtGroupId);
+        return ApiResponse.<List<CourtPriceDTO>>builder()
+                .result(prices)
                 .build();
     }
     
@@ -194,6 +209,42 @@ public class CourtGroupController {
                 .build();
     }
     
+    /**
+     * Update court group (Owner only)
+     * PUT /court-groups/{id}
+     * Content-Type: multipart/form-data
+     */
+    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<CourtGroupResponse> updateCourtGroup(
+            @PathVariable Long id,
+            @RequestParam("owner_id") Long ownerId,
+            @RequestParam("field_name") String fieldName,
+            @RequestParam("field_type") String fieldType,
+            @RequestParam("address") String address,
+            @RequestParam("district") String district,
+            @RequestParam("province") String province,
+            @RequestParam("phone") String phone,
+            @RequestParam("open_time") String openTime,
+            @RequestParam("close_time") String closeTime,
+            @RequestParam(value = "court_number", required = false) Integer courtNumber,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "images", required = false) List<MultipartFile> images,
+            @RequestParam(value = "existing_images", required = false) String existingImages) {
+        
+        // Check if user is owner of the court group
+        checkUpdatePermission(id, ownerId);
+        
+        CourtGroupResponse result = courtGroupService.updateCourtGroup(
+                id, ownerId, fieldName, fieldType, address, district, province,
+                phone, openTime, closeTime, courtNumber, description, images, existingImages);
+        
+        return ApiResponse.<CourtGroupResponse>builder()
+                .code(1000)
+                .result(result)
+                .message("Cập nhật cụm sân thành công")
+                .build();
+    }
+    
     // ========== Helper Methods ==========
     
     /**
@@ -237,6 +288,37 @@ public class CourtGroupController {
         // Owner can only delete their own court group
         CourtGroupDetailResponse courtGroup = courtGroupService.getCourtGroupDetailById(courtGroupId);
         if (!user.getId().equals(courtGroup.getOwnerId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+    }
+    
+    /**
+     * Check if the user has permission to update the court group (Owner only)
+     */
+    private void checkUpdatePermission(Long courtGroupId, Long ownerId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        
+        String email = authentication.getName();
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        
+        // Admin can update any court group
+        if (user.getRole() == Role.ADMIN) {
+            return;
+        }
+        
+        // Owner can only update their own court group
+        if (!user.getId().equals(ownerId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+        
+        // Verify the court group belongs to this owner
+        CourtGroupDetailResponse courtGroup = courtGroupService.getCourtGroupDetailById(courtGroupId);
+        if (!courtGroup.getOwnerId().equals(ownerId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
     }
