@@ -6,14 +6,17 @@ import com.example.booking_service.repository.projection.TopCourtGroupProjection
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import jakarta.persistence.LockModeType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.time.LocalTime;
+import java.util.Optional;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
@@ -230,4 +233,36 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("endDate") LocalDate endDate,
             @Param("timeSlotId") Long timeSlotId,
             @Param("eveningStart") LocalTime eveningStart);
+
+    Optional<Booking> findByIdAndUserId(Long id, Long userId);
+    
+    /**
+     * Check for overlapping bookings on the same court, date, and time
+     * Excludes CANCELLED bookings
+     * Two bookings overlap if:
+     * - booking1.startTime < booking2.endTime AND booking2.startTime < booking1.endTime
+     */
+    @Query("SELECT COUNT(b) > 0 FROM Booking b " +
+            "WHERE b.courtId = :courtId " +
+            "AND b.bookingDate = :bookingDate " +
+            "AND b.status != 'CANCELLED' " +
+            "AND ((b.startTime < :endTime AND b.endTime > :startTime))")
+    boolean hasOverlappingBooking(@Param("courtId") Long courtId,
+                                  @Param("bookingDate") LocalDate bookingDate,
+                                  @Param("startTime") LocalTime startTime,
+                                  @Param("endTime") LocalTime endTime);
+    
+    /**
+     * Find overlapping bookings with pessimistic lock for race condition prevention
+     */
+    @Query("SELECT b FROM Booking b " +
+            "WHERE b.courtId = :courtId " +
+            "AND b.bookingDate = :bookingDate " +
+            "AND b.status != 'CANCELLED' " +
+            "AND ((b.startTime < :endTime AND b.endTime > :startTime))")
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<Booking> findOverlappingBookingsWithLock(@Param("courtId") Long courtId,
+                                                   @Param("bookingDate") LocalDate bookingDate,
+                                                   @Param("startTime") LocalTime startTime,
+                                                   @Param("endTime") LocalTime endTime);
 }

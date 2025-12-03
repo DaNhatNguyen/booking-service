@@ -36,7 +36,8 @@ public class SecurityConfig {
             "/court-groups",
             "/courts/search",
             "/files/**",  // Allow public access to uploaded files (images)
-            "/uploads/**"  // Allow public access to uploads folder (for payment QR codes, etc)
+            "/uploads/**",  // Allow public access to uploads folder (for payment QR codes, etc)
+            "/chatbot/**"
     };
 
     @Value("${jwt.signerKey}")
@@ -69,7 +70,8 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",
                 "http://localhost:5173",
-                "http://localhost:8080"
+                "http://localhost:8080",
+                "https://n1qj5ffp-3000.asse.devtunnels.ms"
         ));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));

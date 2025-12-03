@@ -63,10 +63,17 @@ public class User {
     @Column(name = "updated_at")
     LocalDateTime updatedAt;
 
+    @Builder.Default
+    @Column(name = "is_block")
+    Boolean isBlock = false; // 0 = active, 1 = blocked
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
+        if (isBlock == null) {
+            isBlock = false;
+        }
     }
 
     @PreUpdate

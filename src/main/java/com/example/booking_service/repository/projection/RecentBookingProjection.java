@@ -20,3 +20,12 @@ public interface RecentBookingProjection {
 
 
 
+
+
+
+
+
+
+
+
+

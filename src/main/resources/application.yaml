@@ -23,3 +23,8 @@ jwt:
 
 file:
   upload-dir: uploads/court-images
+
+# Gemini API Configuration (Google AI Studio)
+gemini:
+  apiKey: "AIzaSyACbXHrgmkEMUOwEG4sSl0Z9u9LH3fhGfc"
+  model: "gemini-2.5-flash"

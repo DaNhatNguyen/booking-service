@@ -20,6 +20,7 @@ public enum ErrorCode {
     CANNOT_DELETE_USER(1016, "Cannot delete user with active bookings"),
     CANNOT_DELETE_ADMIN_OWNER(1017, "Cannot delete admin or owner users from this endpoint"),
     USER_BANNED(1018, "User account has been banned"),
+    BOOKING_CONFLICT(1019, "Khung giờ này đã được đặt bởi người khác. Vui lòng chọn khung giờ khác."),
 
     // Owner management specific error codes (aligned with API spec)
     OWNER_UNAUTHORIZED(1001, "Unauthorized"),

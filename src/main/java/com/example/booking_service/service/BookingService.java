@@ -208,8 +208,8 @@ public class BookingService {
     }
 
     public BookingByDateResponse getBookingDataByDate(Long courtGroupId, LocalDate date) {
-        // Get all courts in the court group
-        List<Court> courts = courtRepository.findByCourtGroupId(courtGroupId);
+        // Get only active courts (not locked) in the court group
+        List<Court> courts = courtRepository.findActiveCourtsByCourtGroupId(courtGroupId);
         
         if (courts.isEmpty()) {
             return BookingByDateResponse.builder()
@@ -292,6 +292,7 @@ public class BookingService {
                 .build();
     }
 
+    @Transactional
     public CreateBookingResponse createBooking(CreateBookingRequest request) {
         // Parse date and times
         LocalDate bookingDate = LocalDate.parse(request.getBookingDate());
@@ -307,6 +308,23 @@ public class BookingService {
                 .max(LocalTime::compareTo)
                 .orElseThrow(() -> new RuntimeException("No time slots provided"));
         
+        // Check for overlapping bookings with pessimistic lock to prevent race condition
+        // This will lock the rows to prevent concurrent bookings
+        List<Booking> overlappingBookings = bookingRepository.findOverlappingBookingsWithLock(
+                request.getCourtId(),
+                bookingDate,
+                startTime,
+                endTime
+        );
+        
+        if (!overlappingBookings.isEmpty()) {
+            log.warn("Booking conflict detected: courtId={}, date={}, time={}-{}", 
+                    request.getCourtId(), bookingDate, startTime, endTime);
+            throw new com.example.booking_service.exception.AppException(
+                    com.example.booking_service.exception.ErrorCode.BOOKING_CONFLICT
+            );
+        }
+        
         // Create booking entity with PAYING status
         Booking booking = Booking.builder()
                 .userId(request.getUserId())
@@ -314,7 +332,7 @@ public class BookingService {
                 .bookingDate(bookingDate)
                 .startTime(startTime)
                 .endTime(endTime)
-                .status("PAYING")  // Set status to PAYING for payment flow
+                .status("PAYING")
                 .price(request.getTotalPrice())
                 .address(request.getFullAddress())
                 .createdAt(LocalDateTime.now())
@@ -322,6 +340,9 @@ public class BookingService {
         
         // Save booking
         Booking savedBooking = bookingRepository.save(booking);
+        
+        log.info("Booking created successfully: bookingId={}, courtId={}, date={}, time={}-{}", 
+                savedBooking.getId(), request.getCourtId(), bookingDate, startTime, endTime);
         
         // Build response
         return CreateBookingResponse.builder()

@@ -2,9 +2,11 @@ package com.example.booking_service.controllers;
 
 import com.example.booking_service.dto.request.ApiResponse;
 import com.example.booking_service.dto.request.ApproveOwnerRequest;
+import com.example.booking_service.dto.request.BlockUserRequest;
 import com.example.booking_service.dto.request.RejectOwnerRequest;
 import com.example.booking_service.dto.request.UpdateUserRequest;
 import com.example.booking_service.dto.request.UserCreationRequest;
+import com.example.booking_service.dto.response.BlockUserResponse;
 import com.example.booking_service.dto.response.UserAdminListResponse;
 import com.example.booking_service.dto.response.UserDetailResponse;
 import com.example.booking_service.dto.response.UserResponse;
@@ -181,6 +183,31 @@ public class UserController {
         
         return ApiResponse.<String>builder()
                 .message(message)
+                .build();
+    }
+    
+    /**
+     * Block or unblock user account
+     * PATCH /users/{id}/block
+     * Content-Type: application/json
+     * 
+     * @param id User ID
+     * @param request BlockUserRequest with is_block field (1 = block, 0 = unblock)
+     * @return BlockUserResponse
+     */
+    @PatchMapping("/{id}/block")
+    public ApiResponse<BlockUserResponse> blockUser(
+            @PathVariable Long id,
+            @RequestBody @Valid BlockUserRequest request) {
+        
+        // Check admin role
+        checkAdminRole();
+        
+        BlockUserResponse response = userService.blockUser(id, request.getIsBlock());
+        
+        return ApiResponse.<BlockUserResponse>builder()
+                .message("Cập nhật trạng thái tài khoản thành công")
+                .result(response)
                 .build();
     }
     

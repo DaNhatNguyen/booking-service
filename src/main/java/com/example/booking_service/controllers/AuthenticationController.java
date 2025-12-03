@@ -1,6 +1,11 @@
 package com.example.booking_service.controllers;
 
-import com.example.booking_service.dto.request.*;
+import com.example.booking_service.dto.request.ApiResponse;
+import com.example.booking_service.dto.request.AuthenticationRequest;
+import com.example.booking_service.dto.request.IntrospectRequest;
+import com.example.booking_service.dto.request.LogoutRequest;
+import com.example.booking_service.dto.request.RegisterOwnerRequest;
+import com.example.booking_service.dto.request.RegisterRequest;
 import com.example.booking_service.dto.response.AuthenticationResponse;
 import com.example.booking_service.dto.response.IntrospectResponse;
 import com.example.booking_service.dto.response.RegisterOwnerResponse;

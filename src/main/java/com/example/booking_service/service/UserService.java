@@ -465,4 +465,25 @@ public class UserService {
     private String formatDateTime(LocalDateTime dateTime) {
         return dateTime != null ? dateTime.format(DATE_TIME_FORMATTER) : null;
     }
+    
+    /**
+     * Block or unblock user account
+     * @param userId User ID to block/unblock
+     * @param isBlock 1 = block, 0 = unblock
+     * @return BlockUserResponse
+     */
+    @Transactional
+    public com.example.booking_service.dto.response.BlockUserResponse blockUser(Long userId, Integer isBlock) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+
+        // Update block status
+        user.setIsBlock(isBlock == 1);
+        userRepository.save(user);
+
+        return com.example.booking_service.dto.response.BlockUserResponse.builder()
+                .id(user.getId())
+                .isBlock(user.getIsBlock() ? 1 : 0)
+                .build();
+    }
 }
