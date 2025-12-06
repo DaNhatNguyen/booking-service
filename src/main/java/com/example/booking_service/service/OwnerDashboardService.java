@@ -78,13 +78,17 @@ public class OwnerDashboardService {
         OwnerDashboardResponse.OverviewMetrics overview = calculateOverviewMetrics(
                 ownerCourtGroups, courtIds, startDate, endDate);
 
-        // 4. Tính toán Booking Trend
+        // 4. Tính toán Booking Trend (chỉ hiển thị trong khoảng period.getDays() ngày gần nhất)
+        LocalDate trendStart = endDate.minusDays(period.getDays() - 1);
+        if (trendStart.isBefore(startDate)) {
+            trendStart = startDate;
+        }
         List<OwnerDashboardResponse.SeriesPoint> bookingTrend = calculateBookingTrend(
-                courtIds, startDate, endDate, period);
+                courtIds, trendStart, endDate, period);
 
-        // 5. Tính toán Revenue Trend
+        // 5. Tính toán Revenue Trend (chỉ hiển thị trong khoảng period.getDays() ngày gần nhất)
         List<OwnerDashboardResponse.SeriesPoint> revenueTrend = calculateRevenueTrend(
-                courtIds, startDate, endDate, period);
+                courtIds, trendStart, endDate, period);
 
         // 6. Tính toán Booking Status Distribution
         List<OwnerDashboardResponse.StatusDistribution> statusDistribution = 
@@ -178,10 +182,8 @@ public class OwnerDashboardService {
 
         int bookingGrowth = previousTotalBookings == 0 ? 0 :
                 (int) Math.round(((double) (totalBookings - previousTotalBookings) / previousTotalBookings) * 100);
-
         int revenueGrowth = previousRevenue == 0 ? 0 :
                 (int) Math.round(((totalRevenue - previousRevenue) / previousRevenue) * 100);
-
         return OwnerDashboardResponse.OverviewMetrics.builder()
                 .totalCourtGroups(totalCourtGroups)
                 .totalBookings(totalBookings)

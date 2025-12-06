@@ -79,6 +79,21 @@ public class AuthenticationService {
         var user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
+        // Kiểm tra user bị block
+        if (user.getIsBlock() != null && user.getIsBlock()) {
+            throw new AppException(ErrorCode.USER_BLOCKED);
+        }
+
+        // Kiểm tra owner status
+        if (user.getRole() == Role.OWNER) {
+            if (user.getOwnerStatus() == OwnerStatus.REJECTED) {
+                throw new AppException(ErrorCode.OWNER_REJECTED);
+            }
+            if (user.getOwnerStatus() == null || user.getOwnerStatus() != OwnerStatus.APPROVED) {
+                throw new AppException(ErrorCode.OWNER_NOT_APPROVED);
+            }
+        }
+
         PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(10);
         boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());
         if (!authenticated)

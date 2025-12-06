@@ -24,3 +24,6 @@ public interface FixedBookingRepository extends JpaRepository<FixedBooking, Long
 
 
 
+
+
+

@@ -28,7 +28,10 @@ public enum ErrorCode {
     OWNER_ALREADY_APPROVED(1005, "Owner is already approved or cannot be approved"),
     OWNER_CANNOT_DELETE(1006, "Cannot delete owner with active court groups or bookings"),
     OWNER_MISSING_DOCUMENTS(1007, "Missing required owner documents"),
-    OWNER_INVALID_STATUS(1008, "Invalid owner status for this action")
+    OWNER_INVALID_STATUS(1008, "Invalid owner status for this action"),
+    USER_BLOCKED(1020, "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên."),
+    OWNER_NOT_APPROVED(1021, "Tài khoản chủ sân của bạn chưa được duyệt. Vui lòng chờ quản trị viên xử lý."),
+    OWNER_REJECTED(1022, "Tài khoản chủ sân của bạn đã bị từ chối. Vui lòng liên hệ quản trị viên để biết thêm chi tiết.")
     ;
     private int code;
     private String message;

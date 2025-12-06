@@ -39,7 +39,13 @@ public class UserListItemResponse {
     
     @JsonProperty("owner_verified_at")
     String ownerVerifiedAt;
+    
+    @JsonProperty("is_block")
+    Boolean isBlock;
 }
+
+
+
 
 
 

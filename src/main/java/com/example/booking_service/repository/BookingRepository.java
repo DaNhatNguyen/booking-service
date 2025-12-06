@@ -260,7 +260,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             "AND b.bookingDate = :bookingDate " +
             "AND b.status != 'CANCELLED' " +
             "AND ((b.startTime < :endTime AND b.endTime > :startTime))")
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Lock(LockModeType.PESSIMISTIC_WRITE) // không cho các bản ghi khác ghi trong lúc kiểm tra
     List<Booking> findOverlappingBookingsWithLock(@Param("courtId") Long courtId,
                                                    @Param("bookingDate") LocalDate bookingDate,
                                                    @Param("startTime") LocalTime startTime,

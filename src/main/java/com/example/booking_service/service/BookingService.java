@@ -424,6 +424,7 @@ public class BookingService {
                 })
                 .collect(Collectors.toList());
     }
+
     public CreateBookingResponse confirmBooking(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
@@ -614,19 +615,5 @@ public class BookingService {
             log.error("Error deleting expired bookings", e);
             return 0;
         }
-    }
-
-    // Inner class for time slot selection
-    public static class TimeSlotSelection {
-        private String startTime;
-        private String endTime;
-
-        public TimeSlotSelection(String startTime, String endTime) {
-            this.startTime = startTime;
-            this.endTime = endTime;
-        }
-
-        public String getStartTime() { return startTime; }
-        public String getEndTime() { return endTime; }
     }
 }

@@ -26,5 +26,5 @@ file:
 
 # Gemini API Configuration (Google AI Studio)
 gemini:
-  apiKey: "AIzaSyACbXHrgmkEMUOwEG4sSl0Z9u9LH3fhGfc"
+  apiKey: "AIzaSyC0BsMg4CoFNCk3Z1fzrWZu1T6O17A5DNc"
   model: "gemini-2.5-flash"

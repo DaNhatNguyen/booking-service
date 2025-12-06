@@ -433,6 +433,7 @@ public class UserService {
                 .idCardBack(user.getIdCardBack())
                 .businessLicense(null)
                 .ownerVerifiedAt(formatDateTime(user.getOwnerVerifiedAt()))
+                .isBlock(user.getIsBlock() != null ? user.getIsBlock() : false)
                 .build();
     }
     

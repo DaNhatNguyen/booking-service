@@ -114,7 +114,7 @@ public class BookingController {
     }
 
     /**
-     * Payment API 1: Get payment information for a booking
+     * Payment API 1:
      * GET /api/bookings/{bookingId}/payment-info
      */
     @GetMapping("/{bookingId}/payment-info")
