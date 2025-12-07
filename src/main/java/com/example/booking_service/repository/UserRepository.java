@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -40,4 +41,11 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
                                      @Param("ownerStatus") OwnerStatus ownerStatus,
                                      @Param("search") String search,
                                      Pageable pageable);
- }
+    
+    // Statistics queries
+    @Query(value = "SELECT u.role, COUNT(*) FROM users u GROUP BY u.role", nativeQuery = true)
+    List<Object[]> countUsersByRole();
+    
+    @Query(value = "SELECT u.owner_status, COUNT(*) FROM users u WHERE u.role = 'OWNER' GROUP BY u.owner_status", nativeQuery = true)
+    List<Object[]> countOwnersByStatus();
+}

@@ -1,15 +1,13 @@
 package com.example.booking_service.controllers;
 
 import com.example.booking_service.dto.request.ApiResponse;
-import com.example.booking_service.dto.response.OwnerDashboardResponse;
+import com.example.booking_service.dto.response.StatisticsResponse;
 import com.example.booking_service.entity.User;
-import com.example.booking_service.enums.AdminDashboardPeriod;
-import com.example.booking_service.enums.OwnerStatus;
 import com.example.booking_service.enums.Role;
 import com.example.booking_service.exception.AppException;
 import com.example.booking_service.exception.ErrorCode;
 import com.example.booking_service.repository.UserRepository;
-import com.example.booking_service.service.OwnerDashboardService;
+import com.example.booking_service.service.StatisticsService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -26,23 +24,24 @@ import java.time.LocalDate;
 
 @Slf4j
 @RestController
-@RequestMapping("/owner/dashboard")
+@RequestMapping("/admin/statistics")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-public class OwnerDashboardController {
+public class StatisticsController {
 
-    OwnerDashboardService ownerDashboardService;
+    StatisticsService statisticsService;
     UserRepository userRepository;
 
-    @GetMapping("/overview")
-    public ApiResponse<OwnerDashboardResponse> getDashboardOverview(
+    @GetMapping
+    public ApiResponse<StatisticsResponse> getStatistics(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
-            @RequestParam String period) {
+            @RequestParam(defaultValue = "day") String period) {
 
-        // Check owner role and status
-        User owner = checkOwnerRole();
+        // Check admin role
+        checkAdminRole();
 
+        // Validate dates
         if (startDate == null || endDate == null) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
@@ -51,23 +50,27 @@ public class OwnerDashboardController {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        AdminDashboardPeriod dashboardPeriod;
-        try {
-            dashboardPeriod = AdminDashboardPeriod.fromValue(period);
-        } catch (IllegalArgumentException ex) {
-            log.warn("Invalid period value provided: {}", period);
+        // Validate date range (not more than 1 year)
+        long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate);
+        if (daysBetween > 365) {
             throw new AppException(ErrorCode.INVALID_STATUS);
         }
 
-        var response = ownerDashboardService.getDashboardOverview(
-                owner.getId(), startDate, endDate, dashboardPeriod);
-        
-        return ApiResponse.<OwnerDashboardResponse>builder()
-                .result(response)
+        // Validate period
+        if (!java.util.Arrays.asList("day", "week", "month").contains(period)) {
+            period = "day";
+        }
+
+        StatisticsResponse statistics = statisticsService.getStatistics(startDate, endDate, period);
+
+        return ApiResponse.<StatisticsResponse>builder()
+                .code(1000)
+                .message("Thành công")
+                .result(statistics)
                 .build();
     }
 
-    private User checkOwnerRole() {
+    private void checkAdminRole() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated()) {
@@ -78,33 +81,11 @@ public class OwnerDashboardController {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
 
-        if (user.getRole() != Role.OWNER) {
+        if (user.getRole() != Role.ADMIN) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-
-        if (user.getOwnerStatus() != OwnerStatus.APPROVED) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-
-        return user;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

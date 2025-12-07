@@ -270,7 +270,7 @@ public class FixedBookingService {
                     .bookingDate(date)
                     .startTime(startTime)
                     .endTime(endTime)
-                    .status("PENDING")
+                    .status("CONFIRMED")
                     .price(finalPrice)
                     .address(address)
                     .createdAt(LocalDateTime.now())

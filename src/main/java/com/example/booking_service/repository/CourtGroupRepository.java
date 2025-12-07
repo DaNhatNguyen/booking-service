@@ -53,6 +53,18 @@ public interface CourtGroupRepository extends JpaRepository<CourtGroup, Long> {
             "AND cg.rating > 0 " +
             "ORDER BY cg.rating DESC")
     Page<CourtGroup> findTopRatedCourtGroups(Pageable pageable);
+    
+    // Statistics queries
+    @Query("SELECT cg.status, COUNT(cg) FROM CourtGroup cg " +
+            "WHERE (cg.isDeleted = false OR cg.isDeleted IS NULL) " +
+            "GROUP BY cg.status")
+    List<Object[]> countCourtGroupsByStatus();
+    
+    @Query("SELECT cg.type, COUNT(cg) FROM CourtGroup cg " +
+            "WHERE cg.status = 'approved' AND (cg.isDeleted = false OR cg.isDeleted IS NULL) " +
+            "GROUP BY cg.type " +
+            "ORDER BY COUNT(cg) DESC")
+    List<Object[]> countCourtGroupsByType();
 }
 
 

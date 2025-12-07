@@ -265,4 +265,97 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
                                                    @Param("bookingDate") LocalDate bookingDate,
                                                    @Param("startTime") LocalTime startTime,
                                                    @Param("endTime") LocalTime endTime);
+    
+    // Statistics queries
+    @Query("SELECT COALESCE(SUM(b.price), 0) FROM Booking b " +
+            "WHERE b.bookingDate BETWEEN :startDate AND :endDate " +
+            "AND b.status = :status")
+    Double sumRevenueByBookingDateBetweenAndStatus(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("status") String status);
+    
+    @Query(value = "SELECT " +
+            "COALESCE(b.time_slot_id, " +
+            "  CASE " +
+            "    WHEN b.start_time IS NOT NULL AND b.start_time < :eveningStart THEN 1 " +
+            "    WHEN b.start_time IS NOT NULL THEN 2 " +
+            "    ELSE 1 " +
+            "  END) AS timeSlotId, " +
+            "COUNT(b.id) AS count, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN b.price ELSE 0 END), 0) AS revenue " +
+            "FROM bookings b " +
+            "WHERE b.booking_date BETWEEN :startDate AND :endDate " +
+            "GROUP BY timeSlotId",
+            nativeQuery = true)
+    List<Object[]> countBookingsByTimeSlot(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("eveningStart") LocalTime eveningStart);
+    
+    @Query(value = "SELECT " +
+            "DATE_FORMAT(b.booking_date, '%Y-%m-%d') AS date, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN b.price ELSE 0 END), 0) AS revenue, " +
+            "COUNT(CASE WHEN b.status = 'CONFIRMED' THEN 1 END) AS bookings " +
+            "FROM bookings b " +
+            "WHERE b.booking_date BETWEEN :startDate AND :endDate " +
+            "AND b.status = 'CONFIRMED' " +
+            "GROUP BY DATE_FORMAT(b.booking_date, '%Y-%m-%d') " +
+            "ORDER BY date",
+            nativeQuery = true)
+    List<Object[]> sumRevenueByDay(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+    
+    @Query(value = "SELECT " +
+            "YEARWEEK(b.booking_date) AS week, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN b.price ELSE 0 END), 0) AS revenue, " +
+            "COUNT(CASE WHEN b.status = 'CONFIRMED' THEN 1 END) AS bookings " +
+            "FROM bookings b " +
+            "WHERE b.booking_date BETWEEN :startDate AND :endDate " +
+            "AND b.status = 'CONFIRMED' " +
+            "GROUP BY YEARWEEK(b.booking_date) " +
+            "ORDER BY week",
+            nativeQuery = true)
+    List<Object[]> sumRevenueByWeek(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+    
+    @Query(value = "SELECT " +
+            "DATE_FORMAT(b.booking_date, '%Y-%m') AS month, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN b.price ELSE 0 END), 0) AS revenue, " +
+            "COUNT(CASE WHEN b.status = 'CONFIRMED' THEN 1 END) AS bookings " +
+            "FROM bookings b " +
+            "WHERE b.booking_date BETWEEN :startDate AND :endDate " +
+            "AND b.status = 'CONFIRMED' " +
+            "GROUP BY DATE_FORMAT(b.booking_date, '%Y-%m') " +
+            "ORDER BY month",
+            nativeQuery = true)
+    List<Object[]> sumRevenueByMonth(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+    
+    @Query(value = "SELECT " +
+            "cg.id, " +
+            "cg.name, " +
+            "cg.address, " +
+            "cg.type, " +
+            "COUNT(b.id) AS bookingCount, " +
+            "COALESCE(SUM(CASE WHEN b.status = 'CONFIRMED' THEN b.price ELSE 0 END), 0) AS revenue, " +
+            "COALESCE(AVG(r.rating), 0) AS rating " +
+            "FROM court_groups cg " +
+            "LEFT JOIN courts c ON c.court_group_id = cg.id " +
+            "LEFT JOIN bookings b ON b.court_id = c.id " +
+            "  AND b.status = 'CONFIRMED' " +
+            "  AND b.booking_date BETWEEN :startDate AND :endDate " +
+            "LEFT JOIN reviews r ON r.court_group_id = cg.id " +
+            "WHERE cg.status = 'approved' AND (cg.is_deleted = 0 OR cg.is_deleted IS NULL) " +
+            "GROUP BY cg.id, cg.name, cg.address, cg.type " +
+            "ORDER BY bookingCount DESC " +
+            "LIMIT :limit",
+            nativeQuery = true)
+    List<Object[]> findTopCourtGroupsByRevenue(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("limit") int limit);
 }
